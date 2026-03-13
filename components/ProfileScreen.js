@@ -1,11 +1,80 @@
-import React from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, ScrollView, SafeAreaView, Alert } from 'react-native';
+import React, { useState } from 'react';
+import { 
+  StyleSheet, 
+  Text, 
+  View, 
+  TouchableOpacity, 
+  ScrollView, 
+  SafeAreaView, 
+  Alert, 
+  Image,
+  Modal 
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from './ThemeContext'; // <--- IMPORT THEME
+import * as ImagePicker from 'expo-image-picker';
+import { useTheme } from './ThemeContext';
 
 export default function ProfileScreen({ navigation }) {
-  const { theme } = useTheme(); // <--- GET THEME
-  
+  const { theme } = useTheme();
+
+  const [profilePic, setProfilePic] = useState(null);
+  const [isModalVisible, setModalVisible] = useState(false);
+
+  const avatars = [
+    'https://api.dicebear.com/7.x/avataaars/png?seed=ManagerRahul&backgroundColor=ffffff&clothesColor=0056b3&accessoriesChance=10',
+    'https://api.dicebear.com/7.x/avataaars/png?seed=DriverAnil&backgroundColor=ffffff&clothesColor=0056b3&accessoriesChance=5',
+    'https://api.dicebear.com/7.x/avataaars/png?seed=StaffPriya&backgroundColor=ffffff&clothesColor=0056b3&accessoriesChance=15',
+    'https://api.dicebear.com/7.x/avataaars/png?seed=SecurityKumar&backgroundColor=ffffff&clothesColor=0056b3&topChance=0',
+    'https://api.dicebear.com/7.x/avataaars/png?seed=CommuterAisha&backgroundColor=ffffff&clothesColor=0056b3&accessoriesChance=0',
+    'https://api.dicebear.com/7.x/avataaars/png?seed=OfficerVivek&backgroundColor=ffffff&clothesColor=0056b3&accessoriesChance=20',
+  ];
+
+  const takePhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Denied', 'Camera access is required.');
+      return;
+    }
+
+    let result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 1,
+      cameraType: ImagePicker.CameraType.front,
+    });
+
+    if (!result.canceled) {
+      setProfilePic(result.assets[0].uri);
+      setModalVisible(false);
+    }
+  };
+
+  const pickFromGallery = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Denied', 'Gallery access is required.');
+      return;
+    }
+
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 1,
+    });
+
+    if (!result.canceled) {
+      setProfilePic(result.assets[0].uri);
+      setModalVisible(false);
+    }
+  };
+
+  const selectAvatar = (uri) => {
+    setProfilePic(uri);
+    setModalVisible(false);
+  };
+
   const handleLogout = () => {
     Alert.alert('Logout', 'Are you sure you want to logout?', [
       { text: 'Cancel', style: 'cancel' },
@@ -14,21 +83,25 @@ export default function ProfileScreen({ navigation }) {
   };
 
   return (
-    // 1. DYNAMIC BACKGROUND
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <ScrollView style={styles.scrollView}>
         
-        {/* 2. HEADER: Stays Blue (Brand Identity) */}
         <View style={styles.header}>
-          <View style={styles.avatarContainer}>
-            <Ionicons name="person" size={40} color="#fff" />
+          <View style={styles.imageContainer}>
+            <Image
+              source={profilePic ? { uri: profilePic } : { uri: 'https://via.placeholder.com/150' }}
+              style={styles.profileImage}
+            />
+            <TouchableOpacity style={styles.cameraIcon} onPress={() => setModalVisible(true)}>
+              <Text style={{ fontSize: 18 }}>📷</Text>
+            </TouchableOpacity>
           </View>
+
           <Text style={styles.name}>Rahul Kumar</Text>
           <Text style={styles.role}>Station Manager</Text>
-          <Text style={styles.id}>KMRL - 2024 - 88</Text>
+          <Text style={styles.id}>ID: KMRL-2024-88</Text>
         </View>
 
-        {/* 3. DYNAMIC MENU BACKGROUND */}
         <View style={[styles.menuSection, { backgroundColor: theme.colors.card }]}>
           
           <TouchableOpacity 
@@ -42,7 +115,6 @@ export default function ProfileScreen({ navigation }) {
             <Ionicons name="chevron-forward" size={20} color="#ccc" />
           </TouchableOpacity>
 
-          {/* Dynamic Divider */}
           <View style={[styles.menuDivider, { backgroundColor: theme.colors.border }]} />
 
           <TouchableOpacity 
@@ -84,7 +156,6 @@ export default function ProfileScreen({ navigation }) {
 
         </View>
 
-        {/* 4. DYNAMIC LOGOUT BUTTON BACKGROUND */}
         <View style={styles.footerSection}>
           <TouchableOpacity 
             style={[styles.logoutBtn, { backgroundColor: theme.colors.card, borderColor: '#ff4d4d' }]} 
@@ -95,99 +166,176 @@ export default function ProfileScreen({ navigation }) {
         </View>
 
       </ScrollView>
+
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={isModalVisible}
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: theme.colors.card }]}>
+            
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Update Profile Photo</Text>
+
+              <TouchableOpacity style={[styles.modalButton, { backgroundColor: '#0056b3' }]} onPress={takePhoto}>
+                <Text style={styles.buttonText}>📷 Take Photo (Selfie)</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={[styles.modalButton, { backgroundColor: '#555' }]} onPress={pickFromGallery}>
+                <Text style={styles.buttonText}>🖼️ Upload from Gallery</Text>
+              </TouchableOpacity>
+
+              <Text style={[styles.avatarSectionTitle, { color: theme.colors.text }]}>
+                Or choose an Avatar:
+              </Text>
+              
+              <View style={styles.avatarGrid}>
+                {avatars.map((avatarUri, index) => (
+                  <TouchableOpacity 
+                    key={index} 
+                    onPress={() => selectAvatar(avatarUri)}
+                    style={styles.avatarTouchable}
+                  >
+                    <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeButton}>
+                <Text style={{ color: '#ff4d4d', fontWeight: 'bold', fontSize: 16 }}>Close</Text>
+              </TouchableOpacity>
+            </ScrollView>
+
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1 
-    // Background is now handled inline to support dynamic theme
-  },
-  scrollView: { 
-    flex: 1 
-  },
+  container: { flex: 1 },
+  scrollView: { flex: 1 },
   header: {
-    backgroundColor: '#0056b3', 
-    padding: 30, 
-    paddingTop: 50, 
+    backgroundColor: '#0056b3',
+    padding: 30,
+    paddingTop: 50,
     alignItems: 'center',
-    borderBottomLeftRadius: 30, 
-    borderBottomRightRadius: 30, 
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
     marginBottom: 20,
   },
-  avatarContainer: {
-    width: 80, 
-    height: 80, 
-    borderRadius: 40, 
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    marginBottom: 15, 
-    borderWidth: 2, 
+  imageContainer: {
+    width: 120,
+    height: 120,
+    marginBottom: 10,
+  },
+  profileImage: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    borderWidth: 3,
     borderColor: '#fff',
   },
-  name: { 
-    fontSize: 22, 
-    fontWeight: 'bold', 
-    color: '#fff' 
+  cameraIcon: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: '#fff',
+    padding: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#ddd',
   },
-  role: { 
-    fontSize: 14, 
-    color: '#e0e0e0', 
-    marginTop: 5 
-  },
-  id: { 
-    fontSize: 12, 
-    color: '#e0e0e0', 
-    marginTop: 2 
-  },
+  name: { color: '#fff', fontSize: 22, fontWeight: 'bold' },
+  role: { color: '#e0e0e0', fontSize: 14, marginTop: 5 },
+  id: { color: '#e0e0e0', fontSize: 12, marginTop: 2 },
   menuSection: {
-    marginHorizontal: 20, 
-    borderRadius: 15, 
-    padding: 10, 
+    marginHorizontal: 20,
+    borderRadius: 15,
+    padding: 10,
     marginBottom: 30,
-    shadowColor: '#000', 
-    shadowOffset: { width: 0, height: 1 }, 
-    shadowOpacity: 0.05, 
-    shadowRadius: 2, 
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
     elevation: 2,
-    // Background is now handled inline
   },
-  menuItem: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
+  menuItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingVertical: 15,
   },
-  menuLeft: { 
-    flexDirection: 'row', 
-    alignItems: 'center' 
+  menuLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  menuText: { 
-    fontSize: 16, 
-    marginLeft: 15 
-    // Color is now handled inline
+  menuText: {
+    fontSize: 16,
+    marginLeft: 15,
   },
   menuDivider: {
     height: 1,
     marginHorizontal: 15,
-    // Color is now handled inline
   },
-  footerSection: { 
-    paddingHorizontal: 20, 
-    paddingBottom: 40 
-  },
-  logoutBtn: { 
-    padding: 15, 
-    borderRadius: 10, 
-    borderWidth: 1, 
+  footerSection: { paddingHorizontal: 20, paddingBottom: 40 },
+  logoutBtn: {
+    padding: 15,
+    borderRadius: 10,
+    borderWidth: 1,
     alignItems: 'center',
-    // Background is now handled inline
   },
-  logoutText: { 
-    color: '#ff4d4d', 
-    fontSize: 16, 
-    fontWeight: 'bold' 
+  logoutText: {
+    color: '#ff4d4d',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  modalContent: {
+    padding: 20,
+    borderRadius: 15,
+    width: '90%',
+    alignItems: 'center',
+  },
+  modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
+  modalButton: {
+    padding: 12,
+    borderRadius: 8,
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  buttonText: { color: '#fff', fontSize: 16 },
+  avatarSectionTitle: { marginTop: 15, marginBottom: 10, fontWeight: 'bold', textAlign: 'center' },
+  avatarGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  avatarTouchable: {
+    margin: 5,
+    padding: 2,
+    borderWidth: 2,
+    borderColor: '#0056b3',
+    borderRadius: 45,
+  },
+  avatarImage: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+  },
+  closeButton: {
+    marginTop: 20,
+    padding: 10,
   },
 });

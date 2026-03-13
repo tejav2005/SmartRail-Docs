@@ -2,14 +2,13 @@ import React from 'react';
 import { View, StyleSheet, Text, TouchableOpacity, Alert } from 'react-native';
 import { DrawerContentScrollView, DrawerItem } from '@react-navigation/drawer';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from './ThemeContext';
 
 export default function CustomDrawerContent(props) {
+  const { theme } = useTheme();
   
-  // Function to navigate to a specific Tab inside the Tab Navigator
   const navigateToTab = (tabName) => {
-    // 'MainTabs' is the name we gave to the TabNavigator in DrawerNavigator.js
     props.navigation.navigate('MainTabs', { screen: tabName });
-    // Close the drawer after selection
     props.navigation.closeDrawer();
   };
 
@@ -28,9 +27,8 @@ export default function CustomDrawerContent(props) {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#fff' }}>
+    <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
       
-      {/* Sidebar Header */}
       <View style={styles.headerContainer}>
         <View style={styles.avatarContainer}>
           <Ionicons name="person" size={40} color="#fff" />
@@ -41,12 +39,10 @@ export default function CustomDrawerContent(props) {
 
       <DrawerContentScrollView {...props}>
         
-        {/* Custom Menu Items linked to Tabs */}
-        
         <DrawerItem 
           label="Home" 
           icon={({color, size}) => <Ionicons name="home-outline" size={size} color={color} />}
-          onPress={() => navigateToTab('HomeTab')}
+          onPress={() => navigateToTab('HomeStack')} 
         />
         
         <DrawerItem 
@@ -64,13 +60,11 @@ export default function CustomDrawerContent(props) {
         <DrawerItem 
           label="Profile" 
           icon={({color, size}) => <Ionicons name="person-outline" size={size} color={color} />}
-          onPress={() => navigateToTab('Profile')}
+          onPress={() => navigateToTab('ProfileStack')} 
         />
-        
       </DrawerContentScrollView>
 
-      {/* Logout Button at the Bottom */}
-      <View style={styles.footerContainer}>
+      <View style={[styles.footerContainer, { backgroundColor: theme.colors.card, borderTopColor: theme.colors.border }]}>
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <Ionicons name="log-out-outline" size={22} color="#ff4d4d" />
           <Text style={styles.logoutText}>Logout</Text>
@@ -111,8 +105,6 @@ const styles = StyleSheet.create({
   footerContainer: {
     padding: 20,
     borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
-    backgroundColor: '#fff',
   },
   logoutButton: {
     flexDirection: 'row',

@@ -1,31 +1,30 @@
 import React from 'react';
 import { createDrawerNavigator } from '@react-navigation/drawer';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from './ThemeContext';
 
-// Import the Tab Navigator and Custom Content
 import TabNavigator from './TabNavigator';
 import CustomDrawerContent from './DrawerContent';
 
 const Drawer = createDrawerNavigator();
 
 export default function DrawerNavigator() {
+  const { theme } = useTheme();
+
   return (
     <Drawer.Navigator
       screenOptions={{
-        headerShown: false, // Hide default headers
-        drawerActiveTintColor: '#0056b3',
-        drawerInactiveTintColor: '#666',
+        headerShown: false,
         drawerStyle: {
-          width: 280, // Width of the sidebar
+          width: 280,
+          backgroundColor: theme.colors.card,
         },
+        drawerActiveTintColor: theme.colors.primary,
+        drawerInactiveTintColor: theme.colors.text,
+        drawerActiveBackgroundColor: 'rgba(0, 86, 179, 0.1)',
       }}
-      // Link our Custom Drawer (with Logout) here
       drawerContent={(props) => <CustomDrawerContent {...props} />}
     >
-      {/* 
-         We only need one screen in the drawer: The Tab Navigator.
-         We name it 'MainTabs' so the Sidebar can navigate to specific tabs inside it.
-      */}
       <Drawer.Screen 
         name="MainTabs" 
         component={TabNavigator} 

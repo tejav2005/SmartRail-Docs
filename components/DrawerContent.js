@@ -5,16 +5,18 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
+import { useLanguage } from './LanguageContext';
 
 const DICEBEAR = 'https://api.dicebear.com/7.x/avataaars/png?seed=';
 
 export default function CustomDrawerContent(props) {
   const { theme } = useTheme();
   const { user, signOut } = useAuth();
+  const { t } = useLanguage();
   const [profilePic, setProfilePic] = useState(null);
 
   const displayName = user?.name || 'KMRL Staff';
-  const displayRole = user?.role === 'admin' ? 'Administrator' : (user?.department || 'Staff Member');
+  const displayRole = user?.role === 'admin' ? t('administrator') : (user?.department || t('staffFallback'));
   const displayEmpId = user?.employeeId || '-';
   const avatarUri = profilePic ?? `${DICEBEAR}${user?.employeeId ?? 'KMRL'}&backgroundColor=ffffff&clothesColor=0056b3`;
 
@@ -62,17 +64,17 @@ export default function CustomDrawerContent(props) {
 
       <DrawerContentScrollView {...props} scrollEnabled={false} style={{ flex: 1 }}>
         <View style={[styles.navSection, { backgroundColor: theme.colors.card }]}>
-          <NavItem icon="home-outline" label="Home" onPress={() => navigateToTab('HomeStack')} />
-          <NavItem icon="cloud-upload-outline" label="Upload Documents" onPress={() => navigateToTab('Upload')} />
-          <NavItem icon="calendar-outline" label="Meetings" onPress={() => navigateToTab('Meetings')} />
-          <NavItem icon="person-outline" label="Profile" onPress={() => navigateToTab('ProfileStack')} />
+          <NavItem icon="home-outline" label={t('home')} onPress={() => navigateToTab('HomeStack')} />
+          <NavItem icon="cloud-upload-outline" label={t('uploadDocument')} onPress={() => navigateToTab('Upload')} />
+          <NavItem icon="calendar-outline" label={t('meetings')} onPress={() => navigateToTab('Meetings')} />
+          <NavItem icon="person-outline" label={t('profile')} onPress={() => navigateToTab('ProfileStack')} />
         </View>
       </DrawerContentScrollView>
 
       <View style={[styles.footer, { backgroundColor: theme.colors.card, borderTopColor: theme.colors.border }]}>
         <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
           <Ionicons name="log-out-outline" size={20} color="#EF4444" />
-          <Text style={styles.logoutText}>Logout</Text>
+          <Text style={styles.logoutText}>{t('logout')}</Text>
         </TouchableOpacity>
       </View>
     </View>

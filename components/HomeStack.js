@@ -19,6 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, DrawerActions } from '@react-navigation/native';
 import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
+import { useLanguage } from './LanguageContext';
 import { getStats, getDocuments, getNotifications } from '../services/api';
 
 const { width: W } = Dimensions.get('window');
@@ -99,7 +100,7 @@ function StatCard({ icon, label, value, iconColor, iconBg, trend, trendUp, delay
 
 
 // ─── Urgent Alert Banner ───────────────────────────────────────────────────
-function UrgentBanner({ count, theme }) {
+function UrgentBanner({ count, theme, t }) {
   const pulse = useSharedValue(1);
   useEffect(() => {
     pulse.value = withRepeat(
@@ -125,9 +126,9 @@ function UrgentBanner({ count, theme }) {
             <Ionicons name="alert" size={20} color="#fff" />
           </View>
           <View>
-            <Text style={styles.urgentBannerTitle}>Urgent Attention Required</Text>
+            <Text style={styles.urgentBannerTitle}>{t('urgentAttentionRequired')}</Text>
             <Text style={styles.urgentBannerSub}>
-              {count} document{count !== 1 ? 's' : ''} need{count === 1 ? 's' : ''} immediate action
+              {t('documentsNeedImmediateAction', count)}
             </Text>
           </View>
         </View>
@@ -140,7 +141,7 @@ function UrgentBanner({ count, theme }) {
 }
 
 // ─── Animated Document Card ────────────────────────────────────────────────
-function DocCard({ item, index, onPress }) {
+function DocCard({ item, index, onPress, t }) {
   const { theme } = useTheme();
   const scale = useSharedValue(1);
   const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
@@ -178,7 +179,7 @@ function DocCard({ item, index, onPress }) {
             <View style={[styles.tagPill, item.urgent ? styles.urgentPill : styles.generalPill]}>
               <View style={[styles.tagDot, { backgroundColor: item.urgent ? '#EF4444' : '#1D4ED8' }]} />
               <Text style={[styles.tagText, { color: item.urgent ? '#DC2626' : '#1D4ED8' }]}>
-                {item.urgent ? 'URGENT' : 'GENERAL'}
+                {item.urgent ? t('urgentTag') : t('general')}
               </Text>
             </View>
             <Text style={[styles.docTime, { color: theme.colors.muted }]}>{item.time}</Text>
@@ -202,6 +203,7 @@ export default function HomeTab() {
   const navigation = useNavigation();
   const { theme } = useTheme();
   const { user } = useAuth();
+  const { t } = useLanguage();
   const [showAll, setShowAll] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [allDocuments, setAllDocuments] = useState([]);
@@ -232,7 +234,7 @@ export default function HomeTab() {
           docsResult.value.data.map((doc) => ({
             id: doc._id,
             title: doc.title,
-            summary: doc.summary || doc.description || 'No summary available.',
+            summary: doc.summary || doc.description || t('noSummaryAvailable'),
             time: formatRelativeTime(doc.createdAt),
             urgent: doc.tags?.includes('URGENT'),
           }))
@@ -255,7 +257,7 @@ export default function HomeTab() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [t]);
 
   const displayData = showAll ? allDocuments : allDocuments.slice(0, 4);
   const urgentDocs = allDocuments.filter((d) => d.urgent);
@@ -282,9 +284,9 @@ export default function HomeTab() {
 
   function greetingWord() {
     const h = new Date().getHours();
-    if (h < 12) return 'Good Morning ☀️';
-    if (h < 17) return 'Good Afternoon 👋';
-    return 'Good Evening 🌙';
+    if (h < 12) return t('goodMorning');
+    if (h < 17) return t('goodAfternoon');
+    return t('goodEvening');
   }
 
   // ── List Header ──────────────────────────────────────────────────────────
@@ -294,7 +296,7 @@ export default function HomeTab() {
       <View style={styles.statsRow}>
         <StatCard
           icon="document-text-outline"
-          label="Total Docs"
+          label={t('totalDocs')}
           value={String(stats.totalDocs)}
           iconColor="#2563eb"
           iconBg="#EFF6FF"
@@ -302,7 +304,7 @@ export default function HomeTab() {
         />
         <StatCard
           icon="mail-unread-outline"
-          label="Unread"
+          label={t('unread')}
           value={String(stats.unreadDocs)}
           iconColor="#D97706"
           iconBg="#FEF3C7"
@@ -310,7 +312,7 @@ export default function HomeTab() {
         />
         <StatCard
           icon="alert-circle-outline"
-          label="Urgent"
+          label={t('urgent')}
           value={String(stats.urgentDocs)}
           iconColor="#DC2626"
           iconBg="#FEE2E2"
@@ -321,16 +323,16 @@ export default function HomeTab() {
       {/* Urgent alert banner */}
       {urgentDocs.length > 0 && (
         <View style={styles.bannerWrapper}>
-          <UrgentBanner count={urgentDocs.length} theme={theme} />
+          <UrgentBanner count={urgentDocs.length} theme={theme} t={t} />
         </View>
       )}
 
       {/* Divider with label */}
       <Animated.View entering={FadeInDown.delay(350).springify()} style={styles.sectionHeaderRow}>
         <View>
-          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Recent Documents</Text>
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>{t('recentDocuments')}</Text>
           <Text style={[styles.sectionCount, { color: theme.colors.subText }]}>
-            {displayData.length} of {allDocuments.length} documents
+            {t('recentDocumentsCount', displayData.length, allDocuments.length)}
           </Text>
         </View>
         <TouchableOpacity
@@ -339,7 +341,7 @@ export default function HomeTab() {
           activeOpacity={0.75}
         >
           <Text style={[styles.viewAllText, { color: theme.colors.primary }]}>
-            View All
+            {t('viewAll')}
           </Text>
           <Ionicons name="chevron-forward" size={12} color={theme.colors.primary} />
         </TouchableOpacity>
@@ -382,9 +384,9 @@ export default function HomeTab() {
       <LinearGradient colors={['#EFF6FF', '#DBEAFE']} style={styles.emptyIconWrap}>
         <Ionicons name="document-text-outline" size={48} color="#1D4ED8" />
       </LinearGradient>
-      <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>No Documents Yet</Text>
+      <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>{t('noDocumentsYet')}</Text>
       <Text style={[styles.emptySubtitle, { color: theme.colors.subText }]}>
-        Upload your first document to get started with document management
+        {t('uploadFirstDocument')}
       </Text>
       <TouchableOpacity
         style={styles.emptyBtn}
@@ -392,7 +394,7 @@ export default function HomeTab() {
         activeOpacity={0.85}
       >
         <Ionicons name="cloud-upload-outline" size={16} color="#fff" />
-        <Text style={styles.emptyBtnText}>Upload Document</Text>
+        <Text style={styles.emptyBtnText}>{t('uploadDocument')}</Text>
       </TouchableOpacity>
     </Animated.View>
   );
@@ -437,10 +439,10 @@ export default function HomeTab() {
         {/* Greeting */}
         <View style={styles.greetingBlock}>
           <Text style={styles.greetingSmall}>{greetingWord()}</Text>
-          <Text style={styles.greetingName}>{user?.name ?? 'Staff Member'}</Text>
+          <Text style={styles.greetingName}>{user?.name ?? t('staffFallback')}</Text>
           <View style={styles.greetingMetaRow}>
             <View style={styles.greetingMetaDot} />
-            <Text style={styles.greetingMeta}>Kochi Metro · {user?.department || 'Operations'}</Text>
+            <Text style={styles.greetingMeta}>Kochi Metro · {user?.department || t('operationsFallback')}</Text>
           </View>
         </View>
 
@@ -452,7 +454,7 @@ export default function HomeTab() {
         >
           <View style={styles.searchLeft}>
             <Ionicons name="search-outline" size={17} color="#6B7280" />
-            <Text style={styles.searchPlaceholder}>Search documents, alerts...</Text>
+            <Text style={styles.searchPlaceholder}>{t('searchPlaceholder')}</Text>
           </View>
           <View style={styles.searchPill}>
             <Text style={styles.searchPillText}>⌘ K</Text>
@@ -472,6 +474,7 @@ export default function HomeTab() {
               item={item}
               index={index}
               onPress={() => navigation.navigate('DocumentDetail', { document: item, documentId: item.id })}
+              t={t}
             />
           )}
           ListHeaderComponent={<ListHeader />}
@@ -483,7 +486,7 @@ export default function HomeTab() {
               <Animated.View entering={FadeIn.delay(500)} style={styles.footerRow}>
                 <View style={styles.footerDot} />
                 <Text style={[styles.footerText, { color: theme.colors.muted }]}>
-                  KMRL Document System · All data secured
+                  {t('securedFooter')}
                 </Text>
                 <View style={styles.footerDot} />
               </Animated.View>

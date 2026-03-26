@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity, ScrollView,
   Alert, ActivityIndicator, SafeAreaView, Pressable, Platform,
@@ -13,10 +13,12 @@ import Animated, {
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { useTheme } from './ThemeContext';
+import { useLanguage } from './LanguageContext';
 import { uploadDocument, summarizeDocument } from '../services/api';
 
 function getFileIcon(name = '') {
@@ -69,6 +71,22 @@ function buildUploadFormData(file) {
   return formData;
 }
 
+function escapeHtml(text = '') {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function getCleanSummary(text = '') {
+  return text
+    .replace(/^\s*here'?s\s+the\s+summary(?:\s+of\s+the\s+kmrl\s+operational\s+document)?\s*:\s*/i, '')
+    .replace(/^\s*summary:\s*/i, '')
+    .trim();
+}
+
 function ProgressCard({ progress, statusText, theme }) {
   return (
     <Animated.View entering={FadeInDown.delay(120).springify()}>
@@ -93,11 +111,32 @@ function ProgressCard({ progress, statusText, theme }) {
 
 export default function UploadScreen({ navigation }) {
   const { theme } = useTheme();
+  const { t } = useLanguage();
   const [selectedFile, setSelectedFile] = useState(null);
   const [summary, setSummary] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [statusText, setStatusText] = useState('');
+  const cleanSummary = getCleanSummary(summary);
+
+  const resetUploadState = useCallback(() => {
+    setSelectedFile(null);
+    setSummary('');
+    setIsGenerating(false);
+    setUploadProgress(0);
+    setStatusText('');
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => () => {
+      resetUploadState();
+    }, [resetUploadState])
+  );
+
+  const handleBack = () => {
+    resetUploadState();
+    navigation.navigate('HomeStack');
+  };
 
   const handleFilePick = async () => {
     try {
@@ -119,26 +158,26 @@ export default function UploadScreen({ navigation }) {
         setStatusText('');
       }
     } catch {
-      Alert.alert('Error', 'Failed to pick document. Please try again.');
+      Alert.alert(t('error'), t('failedToPickDocument'));
     }
   };
 
   const handleGenerate = async () => {
     if (!selectedFile) {
-      Alert.alert('No File Selected', 'Please select a document first.');
+      Alert.alert(t('noFileSelected'), t('selectDocumentFirst'));
       return;
     }
 
     setIsGenerating(true);
     setSummary('');
     setUploadProgress(10);
-    setStatusText('Preparing upload...');
+    setStatusText(t('preparingUpload'));
 
     try {
       const formData = buildUploadFormData(selectedFile);
 
       setUploadProgress(35);
-      setStatusText('Uploading document to server...');
+      setStatusText(t('uploadingDocument'));
       const uploadRes = await uploadDocument(formData);
 
       const documentId = uploadRes?.data?._id;
@@ -147,24 +186,22 @@ export default function UploadScreen({ navigation }) {
       }
 
       setUploadProgress(72);
-      setStatusText('Generating AI summary...');
+      setStatusText(t('generatingAiSummary'));
       const summaryRes = await summarizeDocument(documentId);
 
       setUploadProgress(100);
-      setStatusText('Summary ready');
+      setStatusText(t('summaryReady'));
       const generatedSummary = summaryRes?.data?.summary || 'Summary generated successfully.';
       setSummary(generatedSummary);
 
       // Navigate to Home so the new doc shows in Recent Documents
       Alert.alert(
         '✅ Upload Successful',
-        'Document uploaded and AI summary generated. Navigating to All Documents.',
+        t('uploadSuccessMessage'),
         [{
-          text: 'View Documents',
+          text: t('viewDocuments'),
           onPress: () => {
-            setSelectedFile(null);
-            setSummary('');
-            setUploadProgress(0);
+            resetUploadState();
             navigation.navigate('HomeStack', { screen: 'AllDocs' });
           },
         }]
@@ -172,29 +209,21 @@ export default function UploadScreen({ navigation }) {
     } catch (err) {
       setUploadProgress(0);
       setStatusText('');
-      Alert.alert('Upload Failed', err.message || 'Could not upload and summarize this document.');
+      Alert.alert(t('error'), err.message || t('failedToLoadDocuments'));
     } finally {
       setIsGenerating(false);
     }
   };
 
   const handleExport = async () => {
-    if (!summary) return;
+    if (!cleanSummary) return;
 
     try {
+      const summaryHtml = escapeHtml(cleanSummary).replace(/\n/g, '<br />');
       const html = `
         <html>
-          <body style="font-family: Arial, sans-serif; padding: 32px; color: #111827;">
-            <div style="border-bottom: 3px solid #0056b3; padding-bottom: 16px; margin-bottom: 24px;">
-              <h1 style="color: #0056b3; margin: 0; font-size: 22px;">KMRL Document Summary</h1>
-              <p style="color: #6B7280; margin: 6px 0 0; font-size: 13px;">Kochi Metro Rail Limited · Internal Use Only</p>
-            </div>
-            <div style="background: #F9FAFB; border-radius: 12px; padding: 20px; white-space: pre-wrap; font-size: 14px; line-height: 1.7; color: #374151;">
-              ${summary.replace(/\n/g, '<br />')}
-            </div>
-            <p style="color: #9CA3AF; font-size: 11px; text-align: center; margin-top: 32px;">
-              © ${new Date().getFullYear()} Kochi Metro Rail Limited · Auto-generated by KMRL App
-            </p>
+          <body style="font-family: Arial, sans-serif; padding: 32px; color: #111827; font-size: 14px; line-height: 1.7; white-space: pre-wrap;">
+            ${summaryHtml}
           </body>
         </html>
       `;
@@ -202,10 +231,10 @@ export default function UploadScreen({ navigation }) {
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Export Summary PDF' });
       } else {
-        Alert.alert('Exported', 'PDF saved to device.');
+        Alert.alert(t('exported'), t('pdfSavedToDevice'));
       }
     } catch {
-      Alert.alert('Export Failed', 'Could not create the PDF. Please try again.');
+      Alert.alert(t('exportFailed'), t('couldNotCreatePdf'));
     }
   };
 
@@ -222,14 +251,14 @@ export default function UploadScreen({ navigation }) {
         <View style={styles.decor1} />
         <View style={styles.decor2} />
         <TouchableOpacity
-          onPress={() => navigation.navigate('MainTabs', { screen: 'HomeStack' })}
+          onPress={handleBack}
           style={styles.backBtn}
         >
           <Ionicons name="arrow-back" size={22} color="#fff" />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Upload Document</Text>
-          <Text style={styles.headerSub}>Real upload with AI summary</Text>
+          <Text style={styles.headerTitle}>{t('uploadTitle')}</Text>
+          <Text style={styles.headerSub}>{t('uploadSub')}</Text>
         </View>
         <View style={{ width: 40 }} />
       </LinearGradient>
@@ -240,7 +269,7 @@ export default function UploadScreen({ navigation }) {
         keyboardShouldPersistTaps="handled"
       >
         <Animated.View entering={FadeInDown.delay(80).springify()}>
-          <Text style={[styles.sectionLabel, { color: theme.colors.subText }]}>SELECT FILE</Text>
+          <Text style={[styles.sectionLabel, { color: theme.colors.subText }]}>{t('selectFile')}</Text>
 
           {!selectedFile ? (
             <PressButton
@@ -251,8 +280,8 @@ export default function UploadScreen({ navigation }) {
                 <LinearGradient colors={['#EFF6FF', '#DBEAFE']} style={styles.dropIconWrap}>
                   <Ionicons name="cloud-upload-outline" size={38} color="#2563eb" />
                 </LinearGradient>
-                <Text style={[styles.dropTitle, { color: theme.colors.text }]}>Tap to Select File</Text>
-                <Text style={[styles.dropSub, { color: theme.colors.muted }]}>PDF, Word Document, or Image</Text>
+                <Text style={[styles.dropTitle, { color: theme.colors.text }]}>{t('tapToSelectFile')}</Text>
+                <Text style={[styles.dropSub, { color: theme.colors.muted }]}>{t('supportedFileTypes')}</Text>
                 <View style={styles.dropTypeRow}>
                   {['PDF', 'DOCX', 'JPG', 'PNG'].map((type) => (
                     <View key={type} style={styles.typeChip}>
@@ -315,12 +344,12 @@ export default function UploadScreen({ navigation }) {
               {isGenerating ? (
                 <>
                   <ActivityIndicator color="#fff" size="small" />
-                  <Text style={styles.generateBtnText}>Uploading and summarizing...</Text>
+                  <Text style={styles.generateBtnText}>{t('uploadingAndSummarizing')}</Text>
                 </>
               ) : (
                 <>
                   <Ionicons name="flash" size={19} color="#fff" />
-                  <Text style={styles.generateBtnText}>Upload and Generate Summary</Text>
+                  <Text style={styles.generateBtnText}>{t('uploadAndGenerateSummary')}</Text>
                 </>
               )}
             </LinearGradient>
@@ -334,41 +363,29 @@ export default function UploadScreen({ navigation }) {
         {(summary || isGenerating) && (
           <Animated.View entering={FadeInDown.delay(60).springify()}>
             <View style={styles.sectionHeaderRow}>
-              <Text style={[styles.sectionLabel, { color: theme.colors.subText, marginBottom: 0 }]}>AI SUMMARY</Text>
+            <Text style={[styles.sectionLabel, { color: theme.colors.subText, marginBottom: 0 }]}>{t('aiSummary')}</Text>
               <View style={styles.aiBadge}>
                 <Ionicons name="flash" size={11} color="#7C3AED" />
-                <Text style={styles.aiBadgeText}>AI Generated</Text>
+                <Text style={styles.aiBadgeText}>{t('aiGenerated')}</Text>
               </View>
             </View>
 
             <View style={[styles.summaryCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-              <LinearGradient
-                colors={['#4F46E5', '#7C3AED']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.summaryCardHeader}
-              >
-                <Ionicons name="document-text" size={14} color="rgba(255,255,255,0.9)" />
-                <Text style={styles.summaryCardHeaderText}>
-                  {selectedFile?.name ?? 'Document'}
-                </Text>
-              </LinearGradient>
-
               {isGenerating ? (
                 <View style={styles.summaryLoadingWrap}>
                   <ActivityIndicator color="#7C3AED" size="large" />
                   <Text style={[styles.summaryLoadingText, { color: theme.colors.subText }]}>
-                    {statusText || 'Working on your document...'}
+                    {statusText || t('workingOnDocument')}
                   </Text>
                 </View>
               ) : (
                 <Text style={[styles.summaryText, { color: theme.colors.text }]}>
-                  {summary}
+                  {cleanSummary}
                 </Text>
               )}
             </View>
 
-            {summary ? (
+            {cleanSummary ? (
               <Animated.View entering={FadeIn.delay(200)}>
                 <PressButton onPress={handleExport} style={styles.exportBtn}>
                   <View style={styles.exportBtnInner}>
@@ -376,9 +393,9 @@ export default function UploadScreen({ navigation }) {
                       <Ionicons name="download-outline" size={20} color="#0056b3" />
                     </View>
                     <View style={styles.exportTextWrap}>
-                      <Text style={[styles.exportTitle, { color: theme.colors.text }]}>Export as PDF</Text>
+                      <Text style={[styles.exportTitle, { color: theme.colors.text }]}>{t('exportAsPdf')}</Text>
                       <Text style={[styles.exportSub, { color: theme.colors.subText }]}>
-                        Share or save the summary report
+                        {t('shareSaveSummaryReport')}
                       </Text>
                     </View>
                     <Ionicons name="chevron-forward" size={18} color={theme.colors.muted} />
@@ -594,19 +611,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 12,
     elevation: 5,
-  },
-  summaryCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  summaryCardHeaderText: {
-    color: 'rgba(255,255,255,0.9)',
-    fontSize: 13,
-    fontWeight: '600',
-    flex: 1,
   },
   summaryLoadingWrap: { alignItems: 'center', padding: 36, gap: 14 },
   summaryLoadingText: { fontSize: 14, fontWeight: '500', textAlign: 'center' },

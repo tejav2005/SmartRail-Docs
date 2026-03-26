@@ -6,6 +6,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
+import { useLanguage } from './LanguageContext';
 import { getDocuments, deleteDocument } from '../services/api';
 
 function formatRelativeTime(iso) {
@@ -25,12 +26,14 @@ function formatRelativeTime(iso) {
 export default function AllDocsScreen({ navigation, route }) {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const { t } = useLanguage();
   const [filter, setFilter] = useState('all');
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
   const searchRef = useRef(null);
 
@@ -46,17 +49,17 @@ export default function AllDocsScreen({ navigation, route }) {
         ...doc,
         id: doc._id,
         urgent: Array.isArray(doc.tags) && doc.tags.includes('URGENT'),
-        summary: doc.summary || doc.description || 'No summary available.',
+        summary: doc.summary || doc.description || t('noSummaryAvailable'),
       }));
       setDocuments(docs);
     } catch (err) {
       console.error('Failed to fetch documents:', err);
-      setError('Failed to load documents. Please try again.');
+      setError(t('failedToLoadDocuments'));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     fetchDocuments();
@@ -80,11 +83,11 @@ export default function AllDocsScreen({ navigation, route }) {
       await deleteDocument(documentId);
       await fetchDocuments(true);
     } catch (err) {
-      Alert.alert('Delete Failed', err.message || 'Could not delete this document.');
+      Alert.alert(t('deleteFailed'), err.message || t('couldNotDeleteDocument'));
     } finally {
       setDeletingId(null);
     }
-  }, [fetchDocuments]);
+  }, [fetchDocuments, t]);
 
   const filteredDocs = documents.filter((doc) => {
     const matchesFilter = filter === 'all' || (filter === 'urgent' ? doc.urgent : !doc.urgent);
@@ -94,6 +97,18 @@ export default function AllDocsScreen({ navigation, route }) {
       doc.summary?.toLowerCase().includes(q);
     return matchesFilter && matchesSearch;
   });
+
+  const searchSuggestions = searchQuery.trim()
+    ? documents
+      .filter((doc) => {
+        const q = searchQuery.trim().toLowerCase();
+        return (
+          doc.title?.toLowerCase().includes(q) ||
+          doc.summary?.toLowerCase().includes(q)
+        );
+      })
+      .slice(0, 5)
+    : [];
 
   const canDeleteDocument = useCallback((doc) => {
     if (!user) return false;
@@ -121,7 +136,7 @@ export default function AllDocsScreen({ navigation, route }) {
           <View style={[styles.badge, item.urgent ? styles.urgentBadge : styles.normalBadge]}>
             <Ionicons name={item.urgent ? 'alert-circle' : 'document-text'} size={11} color={item.urgent ? '#EF4444' : '#0056b3'} />
             <Text style={[styles.badgeText, item.urgent ? styles.urgentBadgeText : styles.normalBadgeText]}>
-              {item.urgent ? 'URGENT' : 'GENERAL'}
+              {item.urgent ? t('urgentTag') : t('general')}
             </Text>
           </View>
           <Text style={[styles.timeText, { color: theme.colors.muted }]}>{formatRelativeTime(item.createdAt)}</Text>
@@ -135,7 +150,7 @@ export default function AllDocsScreen({ navigation, route }) {
           style={styles.cardFooterLeft}
           onPress={() => navigation.navigate('DocumentDetail', { document: item, documentId: item._id })}
         >
-          <Text style={[styles.readMore, { color: theme.colors.primary }]}>Read more</Text>
+          <Text style={[styles.readMore, { color: theme.colors.primary }]}>{t('readMoreCta')}</Text>
           <Ionicons name="chevron-forward" size={13} color={theme.colors.primary} />
         </TouchableOpacity>
         {canDeleteDocument(item) ? (
@@ -150,7 +165,7 @@ export default function AllDocsScreen({ navigation, route }) {
             ) : (
               <>
                 <Ionicons name="trash-outline" size={14} color="#EF4444" />
-                <Text style={styles.deleteBtnText}>Delete</Text>
+                <Text style={styles.deleteBtnText}>{t('delete')}</Text>
               </>
             )}
           </TouchableOpacity>
@@ -165,24 +180,24 @@ export default function AllDocsScreen({ navigation, route }) {
         style={[styles.filterChip, filter === 'all' && { backgroundColor: '#0056b3', borderColor: '#0056b3' }]}
         onPress={() => setFilter('all')}
       >
-        <Text style={[styles.filterChipText, filter === 'all' && { color: '#fff' }]}>All</Text>
+        <Text style={[styles.filterChipText, filter === 'all' && { color: '#fff' }]}>{t('all')}</Text>
       </TouchableOpacity>
       <TouchableOpacity
         style={[styles.filterChip, filter === 'urgent' && { backgroundColor: '#EF4444', borderColor: '#EF4444' }]}
         onPress={() => setFilter('urgent')}
       >
         <Ionicons name="alert-circle" size={13} color={filter === 'urgent' ? '#fff' : '#EF4444'} style={{ marginRight: 4 }} />
-        <Text style={[styles.filterChipText, filter === 'urgent' && { color: '#fff' }]}>Urgent</Text>
+        <Text style={[styles.filterChipText, filter === 'urgent' && { color: '#fff' }]}>{t('urgent')}</Text>
       </TouchableOpacity>
       <TouchableOpacity
         style={[styles.filterChip, filter === 'general' && { backgroundColor: '#0056b3', borderColor: '#0056b3' }]}
         onPress={() => setFilter('general')}
       >
         <Ionicons name="document-text" size={13} color={filter === 'general' ? '#fff' : '#0056b3'} style={{ marginRight: 4 }} />
-        <Text style={[styles.filterChipText, filter === 'general' && { color: '#fff' }]}>General</Text>
+        <Text style={[styles.filterChipText, filter === 'general' && { color: '#fff' }]}>{t('general')}</Text>
       </TouchableOpacity>
       <Text style={[styles.countText, { color: theme.colors.muted }]}>
-        {filteredDocs.length} document{filteredDocs.length !== 1 ? 's' : ''}
+        {t('documentsCount', filteredDocs.length)}
       </Text>
     </View>
   );
@@ -190,22 +205,22 @@ export default function AllDocsScreen({ navigation, route }) {
   const getEmptyStateMessage = () => {
     if (filter === 'urgent') {
       return {
-        title: 'No urgent documents',
-        subtitle: 'There are no urgent documents right now.',
+        title: t('noUrgentDocuments'),
+        subtitle: t('noUrgentDocumentsSubtitle'),
         icon: 'checkmark-circle-outline',
         iconColor: theme.colors.primary,
       };
     } else if (filter === 'general') {
       return {
-        title: 'No general documents',
-        subtitle: 'No general documents found for now.',
+        title: t('noGeneralDocuments'),
+        subtitle: t('noGeneralDocumentsSubtitle'),
         icon: 'document-text-outline',
         iconColor: theme.colors.primary,
       };
     }
     return {
-      title: 'No documents found',
-      subtitle: 'No documents available at the moment.',
+      title: t('noDocumentsFound'),
+      subtitle: t('noDocumentsSubtitle'),
       icon: 'file-tray-outline',
       iconColor: theme.colors.muted,
     };
@@ -221,44 +236,82 @@ export default function AllDocsScreen({ navigation, route }) {
         <TouchableOpacity onPress={goToHome} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={22} color="#fff" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>All Documents</Text>
+        <Text style={styles.headerTitle}>{t('allDocuments')}</Text>
         <View style={{ width: 38 }} />
       </View>
 
       {/* Search bar */}
-      <View style={[styles.searchWrap, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-        <Ionicons name="search-outline" size={17} color={theme.colors.muted} />
-        <TextInput
-          ref={searchRef}
-          style={[styles.searchInput, { color: theme.colors.text }]}
-          placeholder="Search documents..."
-          placeholderTextColor={theme.colors.muted}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          returnKeyType="search"
-          clearButtonMode="while-editing"
-        />
-        {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={() => setSearchQuery('')}>
-            <Ionicons name="close-circle" size={18} color={theme.colors.muted} />
-          </TouchableOpacity>
-        )}
+      <View style={styles.searchArea}>
+        <View style={[styles.searchWrap, { backgroundColor: theme.colors.card, borderColor: isSearchFocused ? theme.colors.primary : theme.colors.border }]}>
+          <Ionicons name="search-outline" size={17} color={theme.colors.muted} />
+          <TextInput
+            ref={searchRef}
+            style={[styles.searchInput, { color: theme.colors.text }]}
+            placeholder={t('searchDocumentsPlaceholder')}
+            placeholderTextColor={theme.colors.muted}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            onFocus={() => setIsSearchFocused(true)}
+            onBlur={() => setTimeout(() => setIsSearchFocused(false), 120)}
+            returnKeyType="search"
+            clearButtonMode="while-editing"
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Ionicons name="close-circle" size={18} color={theme.colors.muted} />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {isSearchFocused && searchSuggestions.length > 0 ? (
+          <View style={[styles.suggestionsCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+            {searchSuggestions.map((item, index) => (
+              <TouchableOpacity
+                key={item._id || item.id}
+                style={[
+                  styles.suggestionRow,
+                  index < searchSuggestions.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border },
+                ]}
+                activeOpacity={0.75}
+                onPress={() => {
+                  setSearchQuery(item.title);
+                  setIsSearchFocused(false);
+                  navigation.navigate('DocumentDetail', { document: item, documentId: item._id || item.id });
+                }}
+              >
+                <Ionicons
+                  name={item.urgent ? 'alert-circle-outline' : 'document-text-outline'}
+                  size={16}
+                  color={item.urgent ? '#EF4444' : theme.colors.primary}
+                />
+                <View style={styles.suggestionTextWrap}>
+                  <Text style={[styles.suggestionTitle, { color: theme.colors.text }]} numberOfLines={1}>
+                    {item.title}
+                  </Text>
+                  <Text style={[styles.suggestionSub, { color: theme.colors.subText }]} numberOfLines={1}>
+                    {item.summary}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : null}
       </View>
 
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
-          <Text style={[styles.loadingText, { color: theme.colors.subText }]}>Loading documents...</Text>
+          <Text style={[styles.loadingText, { color: theme.colors.subText }]}>{t('loadingDocuments')}</Text>
         </View>
       ) : error ? (
         <View style={styles.emptyState}>
           <View style={[styles.emptyIcon, { backgroundColor: theme.colors.card }]}>
             <Ionicons name="warning-outline" size={44} color={theme.colors.danger} />
           </View>
-          <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>Error</Text>
+          <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>{t('error')}</Text>
           <Text style={[styles.emptySubtitle, { color: theme.colors.subText }]}>{error}</Text>
           <TouchableOpacity style={styles.retryButton} onPress={() => fetchDocuments()}>
-            <Text style={styles.retryButtonText}>Try Again</Text>
+            <Text style={styles.retryButtonText}>{t('retry')}</Text>
           </TouchableOpacity>
         </View>
       ) : filteredDocs.length === 0 ? (
@@ -389,9 +442,39 @@ const styles = StyleSheet.create({
 
   searchWrap: {
     flexDirection: 'row', alignItems: 'center',
-    marginHorizontal: 16, marginVertical: 12,
     paddingHorizontal: 14, paddingVertical: 10,
     borderRadius: 14, borderWidth: 1.5, gap: 8,
   },
-  searchInput: { flex: 1, fontSize: 14 },
+  searchArea: {
+    marginHorizontal: 16,
+    marginVertical: 12,
+    zIndex: 20,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    outlineWidth: 0,
+    outlineStyle: 'none',
+  },
+  suggestionsCard: {
+    marginTop: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  suggestionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  suggestionTextWrap: { flex: 1 },
+  suggestionTitle: { fontSize: 13, fontWeight: '700', marginBottom: 2 },
+  suggestionSub: { fontSize: 12 },
 });

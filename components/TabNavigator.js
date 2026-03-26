@@ -15,6 +15,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from './ThemeContext';
+import { useLanguage } from './LanguageContext';
 
 import HomeStackNavigator from './HomeStackNavigator';
 import UploadScreen from './UploadScreen';
@@ -26,25 +27,25 @@ const Tab = createBottomTabNavigator();
 const TABS = [
   {
     name: 'HomeStack',
-    label: 'Home',
+    labelKey: 'home',
     activeIcon: 'home',
     inactiveIcon: 'home-outline',
   },
   {
     name: 'Upload',
-    label: 'Upload',
+    labelKey: 'upload',
     activeIcon: 'cloud-upload',
     inactiveIcon: 'cloud-upload-outline',
   },
   {
     name: 'Meetings',
-    label: 'Meetings',
+    labelKey: 'meetings',
     activeIcon: 'calendar',
     inactiveIcon: 'calendar-outline',
   },
   {
     name: 'ProfileStack',
-    label: 'Profile',
+    labelKey: 'profile',
     activeIcon: 'person',
     inactiveIcon: 'person-outline',
   },
@@ -53,6 +54,7 @@ const TABS = [
 // ─── Animated tab button ───────────────────────────────────────────────────
 function TabButton({ tab, isFocused, onPress, onLongPress }) {
   const { theme } = useTheme();
+  const { t } = useLanguage();
   const scale = useSharedValue(isFocused ? 1.08 : 1);
   const labelOpacity = useSharedValue(isFocused ? 1 : 0);
   const labelTranslate = useSharedValue(isFocused ? 0 : 6);
@@ -106,7 +108,7 @@ function TabButton({ tab, isFocused, onPress, onLongPress }) {
         style={[styles.tabLabel, labelAnimStyle]}
         numberOfLines={1}
       >
-        {tab.label}
+        {t(tab.labelKey)}
       </Animated.Text>
     </TouchableOpacity>
   );
@@ -170,15 +172,17 @@ function CustomTabBar({ state, navigation }) {
 
 // ─── Navigator ─────────────────────────────────────────────────────────────
 export default function TabNavigator() {
+  const { t } = useLanguage();
+
   return (
     <Tab.Navigator
       tabBar={props => <CustomTabBar {...props} />}
       screenOptions={{ headerShown: false }}
     >
-      <Tab.Screen name="HomeStack"    component={HomeStackNavigator} options={{ title: 'Home' }} />
-      <Tab.Screen name="Upload"       component={UploadScreen}  options={{ title: 'Upload'   }} />
-      <Tab.Screen name="Meetings"     component={MeetingScreen} options={{ title: 'Meetings' }} />
-      <Tab.Screen name="ProfileStack" component={ProfileStack}  options={{ title: 'Profile'  }} />
+      <Tab.Screen name="HomeStack" component={HomeStackNavigator} options={{ title: t('home') }} />
+      <Tab.Screen name="Upload" component={UploadScreen} options={{ title: t('upload') }} />
+      <Tab.Screen name="Meetings" component={MeetingScreen} options={{ title: t('meetings') }} />
+      <Tab.Screen name="ProfileStack" component={ProfileStack} options={{ title: t('profile') }} />
     </Tab.Navigator>
   );
 }

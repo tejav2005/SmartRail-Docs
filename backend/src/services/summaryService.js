@@ -1,6 +1,14 @@
+const fs = require('fs');
+const { PDFParse } = require('pdf-parse');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+
 const { env } = require('../config/env');
 
-const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
+const GEMINI_MODEL_ALIASES = {
+  'gemini-1.5-flash': 'gemini-2.5-flash',
+};
+const GEMINI_MODEL = GEMINI_MODEL_ALIASES[env.geminiModel] || env.geminiModel || 'gemini-2.5-flash';
+const MAX_TEXT_CHARS = 4000;
 
 const URGENT_KEYWORDS = [
   'urgent', 'alert', 'emergency', 'critical', 'immediate',
@@ -10,23 +18,61 @@ const URGENT_KEYWORDS = [
 
 function buildMockSummary(payload) {
   return [
-    `Document "${payload.title}" has been processed for KMRL staff review.`,
+    'Key points: Document uploaded for KMRL staff review.',
     payload.description
-      ? `Key context: ${payload.description}`
-      : 'No description was provided, so the summary is based on metadata only.',
-    `Source file: ${payload.originalName} (${payload.mimeType}).`,
-    'Recommended next steps: verify document ownership, review action items, and notify relevant teams if follow-up is needed.',
+      ? `Alerts: ${payload.description}`
+      : 'Alerts: No specific alerts identified from the available metadata.',
+    'Actions required: Review the original document and confirm whether any operational follow-up is needed.',
   ].join(' ');
 }
 
-function buildGeminiPrompt(payload) {
+function truncateText(text, maxChars = MAX_TEXT_CHARS) {
+  const normalized = String(text || '').replace(/\s+/g, ' ').trim();
+  return normalized.length > maxChars
+    ? `${normalized.slice(0, maxChars)}...`
+    : normalized;
+}
+
+async function extractPdfText(filePath) {
+  if (!filePath || !fs.existsSync(filePath)) {
+    return '';
+  }
+
+  try {
+    const buffer = await fs.promises.readFile(filePath);
+    const parser = new PDFParse({ data: buffer });
+    const parsed = await parser.getText();
+    return truncateText(parsed.text || '');
+  } catch (error) {
+    console.warn('[summaryService] Failed to extract PDF text:', error.message);
+    return '';
+  }
+}
+
+async function extractDocumentText(payload) {
+  if (payload.mimeType === 'application/pdf') {
+    return extractPdfText(payload.filePath);
+  }
+
+  return '';
+}
+
+function buildPrompt(payload, extractedText) {
   return [
-    'Summarize this document for KMRL staff in 3-4 concise sentences.',
-    'Focus on the main purpose, important decisions or action items, and whether the content seems urgent.',
+    'Summarize the following metro operational document into:',
+    '* Key points',
+    '* Alerts (if any)',
+    '* Actions required',
+    '',
+    'Keep it short, clear, and professional.',
+    '',
     `Title: ${payload.title}`,
     `Description: ${payload.description || 'N/A'}`,
-    `File: ${payload.originalName}`,
-    `Type: ${payload.mimeType}`,
+    `File Name: ${payload.originalName}`,
+    `File Type: ${payload.mimeType}`,
+    '',
+    'Document Text:',
+    extractedText || 'No extractable document text was found. Use the available metadata only.',
   ].join('\n');
 }
 
@@ -34,40 +80,11 @@ function hasGeminiConfig() {
   return Boolean(env.geminiApiKey);
 }
 
-async function requestGeminiSummary(payload) {
-  const model = env.geminiModel;
-  const response = await fetch(
-    `${GEMINI_API_BASE}/${model}:generateContent?key=${env.geminiApiKey}`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              {
-                text: buildGeminiPrompt(payload),
-              },
-            ],
-          },
-        ],
-        generationConfig: {
-          temperature: 0.4,
-          maxOutputTokens: 250,
-        },
-      }),
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error(`Gemini request failed with status ${response.status}`);
-  }
-
-  const data = await response.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+async function requestGeminiSummary(prompt) {
+  const genAI = new GoogleGenerativeAI(env.geminiApiKey);
+  const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
+  const result = await model.generateContent(prompt);
+  return result.response.text().trim();
 }
 
 function isUrgentContent(title = '', description = '') {
@@ -83,7 +100,9 @@ async function createSummary(payload) {
   }
 
   try {
-    const summary = await requestGeminiSummary(payload);
+    const extractedText = await extractDocumentText(payload);
+    const prompt = buildPrompt(payload, extractedText);
+    const summary = await requestGeminiSummary(prompt);
     return summary || fallbackSummary;
   } catch (error) {
     console.warn('[summaryService] Gemini summarization failed, using fallback:', error.message);

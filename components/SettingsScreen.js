@@ -141,7 +141,7 @@ export default function SettingsScreen({ navigation }) {
 
         {/* ── Notifications ── */}
         <Animated.View entering={FadeInDown.delay(80).springify()}>
-          <Text style={[styles.groupLabel, { color: theme.colors.subText }]}>NOTIFICATIONS</Text>
+          <Text style={[styles.groupLabel, { color: theme.colors.subText }]}>{t('notifications').toUpperCase()}</Text>
           <View style={[styles.card, { backgroundColor: theme.colors.card }]}>
             <ToggleRow
               icon="notifications-outline" iconColor="#D97706" iconBg="#FEF3C7"
@@ -189,8 +189,8 @@ export default function SettingsScreen({ navigation }) {
             />
             <TapRow
               icon="person-outline" iconColor="#2563eb" iconBg="#EFF6FF"
-              title="Account Info"
-              subtitle="View your profile details"
+              title={t('profile')}
+              subtitle={t('profile')}
               onPress={() => navigation.navigate('ProfileScreen')}
               isLast
             />
@@ -203,15 +203,15 @@ export default function SettingsScreen({ navigation }) {
           <View style={[styles.card, { backgroundColor: theme.colors.card }]}>
             <TapRow
               icon="information-circle-outline" iconColor="#16A34A" iconBg="#DCFCE7"
-              title="About KMRL App"
-              subtitle="Version info and credits"
+              title={t('aboutKMRLApp')}
+              subtitle={t('version')}
               onPress={() => navigation.navigate('About')}
             />
             <TapRow
               icon="help-circle-outline" iconColor="#F59E0B" iconBg="#FEF3C7"
-              title="Help & Support"
-              subtitle="Contact IT support team"
-              onPress={() => Alert.alert('Support', 'Email: it@kmrl.co.in\nPhone: +91-484-000-0000')}
+              title={t('helpSupport')}
+              subtitle={t('supportContact')}
+              onPress={() => Alert.alert(t('helpSupport'), t('supportContact'))}
               isLast
             />
           </View>
@@ -246,7 +246,7 @@ export default function SettingsScreen({ navigation }) {
           <Pressable>
             <Animated.View entering={FadeIn} style={[styles.modalSheet, { backgroundColor: theme.colors.card }]}>
               <View style={[styles.modalHandle, { backgroundColor: theme.colors.border }]} />
-              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Select Language</Text>
+              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>{t('selectLanguage')}</Text>
 
               {LANGUAGES.map((lang, i) => (
                 <TouchableOpacity

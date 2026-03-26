@@ -7,6 +7,7 @@ import {
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from './ThemeContext';
+import { useLanguage } from './LanguageContext';
 import { getMeetings, createMeeting, getUsers } from '../services/api';
 
 // Card color cycle for variety
@@ -37,6 +38,7 @@ function formatDate(isoString) {
 
 export default function MeetingScreen({ navigation }) {
   const { theme } = useTheme();
+  const { t } = useLanguage();
   const [meetings, setMeetings] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -85,12 +87,12 @@ export default function MeetingScreen({ navigation }) {
       const res = await getMeetings();
       setMeetings(res.data || []);
     } catch (err) {
-      Alert.alert('Error', err.message || 'Failed to load meetings.');
+      Alert.alert(t('error'), err.message || t('failedToLoadMeetings'));
     } finally {
       setIsLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => { fetchMeetings(); }, [fetchMeetings]);
 
@@ -109,27 +111,27 @@ export default function MeetingScreen({ navigation }) {
 
   const handleCreate = async () => {
     if (!form.title.trim()) {
-      Alert.alert('Validation', 'Meeting title is required.');
+      Alert.alert(t('validation'), t('meetingTitleRequired'));
       return;
     }
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
     const timeRegex = /^\d{2}:\d{2}$/;
     if (!dateRegex.test(form.startDate.trim()) || !timeRegex.test(form.startHour.trim())) {
-      Alert.alert('Validation', 'Enter start date as YYYY-MM-DD and time as HH:MM  (e.g. 2025-12-31 and 09:00).');
+      Alert.alert(t('validation'), t('meetingStartValidation'));
       return;
     }
     if (!dateRegex.test(form.endDate.trim()) || !timeRegex.test(form.endHour.trim())) {
-      Alert.alert('Validation', 'Enter end date as YYYY-MM-DD and time as HH:MM  (e.g. 2025-12-31 and 10:00).');
+      Alert.alert(t('validation'), t('meetingEndValidation'));
       return;
     }
     const startISO = buildISO(form.startDate, form.startHour);
     const endISO   = buildISO(form.endDate,   form.endHour);
     if (!startISO || !endISO) {
-      Alert.alert('Validation', 'Invalid date or time. Please check and try again.');
+      Alert.alert(t('validation'), t('meetingInvalidDateTime'));
       return;
     }
     if (new Date(endISO) <= new Date(startISO)) {
-      Alert.alert('Validation', 'End time must be after start time.');
+      Alert.alert(t('validation'), t('meetingEndAfterStart'));
       return;
     }
     setSaving(true);
@@ -146,7 +148,7 @@ export default function MeetingScreen({ navigation }) {
       resetForm();
       fetchMeetings();
     } catch (err) {
-      Alert.alert('Error', err.message || 'Failed to create meeting.');
+      Alert.alert(t('error'), err.message || t('failedToCreateMeeting'));
     } finally {
       setSaving(false);
     }
@@ -172,7 +174,7 @@ export default function MeetingScreen({ navigation }) {
         <TouchableOpacity onPress={goToHome} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={22} color="#fff" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Meetings</Text>
+        <Text style={styles.headerTitle}>{t('meetings')}</Text>
         <View style={{ width: 38 }} />
       </View>
 
@@ -180,7 +182,7 @@ export default function MeetingScreen({ navigation }) {
         <View style={styles.loadingWrap}>
           <ActivityIndicator size="large" color="#0056b3" />
           <Text style={[styles.loadingText, { color: theme.colors.subText }]}>
-            Loading meetings...
+            {t('loadingMeetings')}
           </Text>
         </View>
       ) : (
@@ -195,9 +197,9 @@ export default function MeetingScreen({ navigation }) {
           {meetings.length === 0 ? (
             <Animated.View entering={FadeIn} style={styles.emptyState}>
               <Ionicons name="calendar-outline" size={56} color="#CBD5E1" />
-              <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>No Meetings Scheduled</Text>
+              <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>{t('noMeetingsScheduled')}</Text>
               <Text style={[styles.emptySub, { color: theme.colors.subText }]}>
-                No meetings have been scheduled yet. Check back later.
+                {t('noMeetingsScreenSubtitle')}
               </Text>
             </Animated.View>
           ) : (
@@ -210,7 +212,7 @@ export default function MeetingScreen({ navigation }) {
                     <Text style={styles.dateBadgeText}>{formatDate(dayMeetings[0]?.startTime)}</Text>
                   </View>
                   <View style={[styles.countBadge, { backgroundColor: '#EBF4FF' }]}>
-                    <Text style={styles.countBadgeText}>{dayMeetings.length} meeting{dayMeetings.length !== 1 ? 's' : ''}</Text>
+                    <Text style={styles.countBadgeText}>{t('meetingsCount', dayMeetings.length)}</Text>
                   </View>
                 </View>
 
@@ -316,31 +318,31 @@ export default function MeetingScreen({ navigation }) {
             >
               <View style={[styles.modalSheet, { backgroundColor: theme.colors.card }]}>
                 <View style={[styles.modalHandle, { backgroundColor: theme.colors.border }]} />
-                <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Schedule Meeting</Text>
+                <Text style={[styles.modalTitle, { color: theme.colors.text }]}>{t('scheduleMeeting')}</Text>
 
-                <Text style={[styles.fieldLabel, { color: theme.colors.subText }]}>Title *</Text>
+                <Text style={[styles.fieldLabel, { color: theme.colors.subText }]}>{t('meetingTitle')}</Text>
                 <TextInput
                   style={[styles.input, { backgroundColor: theme.colors.background, color: theme.colors.text, borderColor: theme.colors.border }]}
-                  placeholder="Meeting title"
+                  placeholder={t('meetingTitlePlaceholder')}
                   placeholderTextColor={theme.colors.muted}
                   value={form.title}
                   onChangeText={(v) => setForm(f => ({ ...f, title: v }))}
                 />
 
-                <Text style={[styles.fieldLabel, { color: theme.colors.subText }]}>Location</Text>
+                <Text style={[styles.fieldLabel, { color: theme.colors.subText }]}>{t('meetingLocation')}</Text>
                 <TextInput
                   style={[styles.input, { backgroundColor: theme.colors.background, color: theme.colors.text, borderColor: theme.colors.border }]}
-                  placeholder="Room or link"
+                  placeholder={t('meetingLocationPlaceholder')}
                   placeholderTextColor={theme.colors.muted}
                   value={form.location}
                   onChangeText={(v) => setForm(f => ({ ...f, location: v }))}
                 />
 
-                <Text style={[styles.fieldLabel, { color: theme.colors.subText }]}>Start *</Text>
+                <Text style={[styles.fieldLabel, { color: theme.colors.subText }]}>{t('startTime')}</Text>
                 <View style={styles.dateTimeRow}>
                   <TextInput
                     style={[styles.input, styles.dateInput, { backgroundColor: theme.colors.background, color: theme.colors.text, borderColor: theme.colors.border }]}
-                    placeholder="YYYY-MM-DD"
+                    placeholder={t('meetingDatePlaceholder')}
                     placeholderTextColor={theme.colors.muted}
                     value={form.startDate}
                     onChangeText={(v) => setForm(f => ({ ...f, startDate: v }))}
@@ -349,7 +351,7 @@ export default function MeetingScreen({ navigation }) {
                   />
                   <TextInput
                     style={[styles.input, styles.timeInput, { backgroundColor: theme.colors.background, color: theme.colors.text, borderColor: theme.colors.border }]}
-                    placeholder="HH:MM"
+                    placeholder={t('meetingTimePlaceholder')}
                     placeholderTextColor={theme.colors.muted}
                     value={form.startHour}
                     onChangeText={(v) => setForm(f => ({ ...f, startHour: v }))}
@@ -358,11 +360,11 @@ export default function MeetingScreen({ navigation }) {
                   />
                 </View>
 
-                <Text style={[styles.fieldLabel, { color: theme.colors.subText }]}>End *</Text>
+                <Text style={[styles.fieldLabel, { color: theme.colors.subText }]}>{t('endTime')}</Text>
                 <View style={styles.dateTimeRow}>
                   <TextInput
                     style={[styles.input, styles.dateInput, { backgroundColor: theme.colors.background, color: theme.colors.text, borderColor: theme.colors.border }]}
-                    placeholder="YYYY-MM-DD"
+                    placeholder={t('meetingDatePlaceholder')}
                     placeholderTextColor={theme.colors.muted}
                     value={form.endDate}
                     onChangeText={(v) => setForm(f => ({ ...f, endDate: v }))}
@@ -371,7 +373,7 @@ export default function MeetingScreen({ navigation }) {
                   />
                   <TextInput
                     style={[styles.input, styles.timeInput, { backgroundColor: theme.colors.background, color: theme.colors.text, borderColor: theme.colors.border }]}
-                    placeholder="HH:MM"
+                    placeholder={t('meetingTimePlaceholder')}
                     placeholderTextColor={theme.colors.muted}
                     value={form.endHour}
                     onChangeText={(v) => setForm(f => ({ ...f, endHour: v }))}
@@ -380,7 +382,7 @@ export default function MeetingScreen({ navigation }) {
                   />
                 </View>
 
-                <Text style={[styles.fieldLabel, { color: theme.colors.subText }]}>Mode</Text>
+                <Text style={[styles.fieldLabel, { color: theme.colors.subText }]}>{t('mode')}</Text>
                 <View style={styles.modeRow}>
                   {MODES.map((m) => (
                     <TouchableOpacity
@@ -393,7 +395,7 @@ export default function MeetingScreen({ navigation }) {
                       onPress={() => setForm(f => ({ ...f, mode: m }))}
                     >
                       <Text style={[styles.modeChipText, { color: form.mode === m ? '#0056b3' : theme.colors.muted }]}>
-                        {m.charAt(0).toUpperCase() + m.slice(1)}
+                        {t(m)}
                       </Text>
                     </TouchableOpacity>
                   ))}
@@ -401,14 +403,14 @@ export default function MeetingScreen({ navigation }) {
 
                 {/* Attendees */}
                 <Text style={[styles.fieldLabel, { color: theme.colors.subText }]}>
-                  Attendees {selectedAttendees.length > 0 ? `(${selectedAttendees.length} selected)` : ''}
+                  {t('attendees')} {selectedAttendees.length > 0 ? `(${selectedAttendees.length} ${t('selected')})` : ''}
                 </Text>
                 <View style={[styles.input, { backgroundColor: theme.colors.background, borderColor: theme.colors.border, paddingHorizontal: 10, paddingVertical: 6 }]}>
                   <View style={styles.attendeeSearchRow}>
                     <Ionicons name="search-outline" size={14} color={theme.colors.muted} />
                     <TextInput
                       style={[styles.attendeeSearchInput, { color: theme.colors.text }]}
-                      placeholder="Search staff..."
+                      placeholder={t('searchStaff')}
                       placeholderTextColor={theme.colors.muted}
                       value={attendeeSearch}
                       onChangeText={setAttendeeSearch}
@@ -454,7 +456,7 @@ export default function MeetingScreen({ navigation }) {
                 >
                   {saving
                     ? <ActivityIndicator color="#fff" />
-                    : <Text style={styles.submitBtnText}>Schedule Meeting</Text>
+                    : <Text style={styles.submitBtnText}>{t('scheduleMeetingBtn')}</Text>
                   }
                 </TouchableOpacity>
               </View>

@@ -19,6 +19,11 @@ function normalizeAttendees(attendees) {
   )];
 }
 
+async function purgeExpiredMeetings() {
+  const now = new Date();
+  await Meeting.deleteMany({ endTime: { $lt: now } });
+}
+
 /** POST /api/meetings */
 const createMeeting = asyncHandler(async (req, res) => {
   const { title, agenda, description, startTime, endTime, attendees, mode, location } = req.body;
@@ -70,6 +75,8 @@ const createMeeting = asyncHandler(async (req, res) => {
 
 /** GET /api/meetings */
 const listMeetings = asyncHandler(async (req, res) => {
+  await purgeExpiredMeetings();
+
   const query =
     req.user.role === 'admin'
       ? {}

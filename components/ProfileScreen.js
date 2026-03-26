@@ -12,6 +12,7 @@ import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from './ThemeContext';
 import { useAuth } from './AuthContext';
+import { useLanguage } from './LanguageContext';
 import { getDocumentStats, getMeetings } from '../services/api';
 
 const DICEBEAR = 'https://api.dicebear.com/7.x/avataaars/png?seed=';
@@ -53,6 +54,7 @@ function MenuItem({ icon, label, iconColor, iconBg, onPress, isLast, value }) {
 export default function ProfileScreen({ navigation }) {
   const { theme } = useTheme();
   const { user, signOut } = useAuth();
+  const { t } = useLanguage();
   const [profilePic, setProfilePic] = useState(null);
 
   // Restore profile photo from storage on mount
@@ -63,9 +65,9 @@ export default function ProfileScreen({ navigation }) {
   }, []);
   const [showAvatarModal, setShowAvatarModal] = useState(false);
   const [stats, setStats] = useState([
-    { label: 'Documents', value: '—' },
-    { label: 'Meetings',  value: '—' },
-    { label: 'Alerts',    value: '—' },
+    { label: t('documentsStat'), value: '—' },
+    { label: t('meetingsStat'),  value: '—' },
+    { label: t('alertsStat'),    value: '—' },
   ]);
 
   // Load live stats
@@ -77,23 +79,23 @@ export default function ProfileScreen({ navigation }) {
           getMeetings(),
         ]);
         setStats([
-          { label: 'Documents', value: String(statsRes.data.totalDocs ?? 0) },
-          { label: 'Meetings',  value: String(meetingsRes.data?.length ?? 0) },
-          { label: 'Alerts',    value: String(statsRes.data.urgentDocs ?? 0) },
+          { label: t('documentsStat'), value: String(statsRes.data.totalDocs ?? 0) },
+          { label: t('meetingsStat'),  value: String(meetingsRes.data?.length ?? 0) },
+          { label: t('alertsStat'),    value: String(statsRes.data.urgentDocs ?? 0) },
         ]);
       } catch {
         // Keep dashes on error
       }
     }
     loadStats();
-  }, []);
+  }, [t]);
 
   // Use avatar from DiceBear seeded with employeeId for consistent avatar
   const avatarUri = profilePic ?? `${DICEBEAR}${user?.employeeId ?? 'KMRL'}\u0026backgroundColor=ffffff\u0026clothesColor=0056b3`;
 
   const pickFromCamera = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') { Alert.alert('Permission Denied', 'Camera access is required.'); return; }
+    if (status !== 'granted') { Alert.alert(t('permissionDenied'), t('cameraAccessRequired')); return; }
     const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, aspect: [1, 1], quality: 1 });
     if (!result.canceled) {
       const uri = result.assets[0].uri;
@@ -105,7 +107,7 @@ export default function ProfileScreen({ navigation }) {
 
   const pickFromGallery = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') { Alert.alert('Permission Denied', 'Gallery access is required.'); return; }
+    if (status !== 'granted') { Alert.alert(t('permissionDenied'), t('galleryAccessRequired')); return; }
     const result = await ImagePicker.launchImageLibraryAsync({ allowsEditing: true, aspect: [1, 1], quality: 1 });
     if (!result.canceled) {
       const uri = result.assets[0].uri;
@@ -144,10 +146,10 @@ export default function ProfileScreen({ navigation }) {
           </Animated.View>
 
           <Animated.View entering={FadeInDown.delay(180).springify()} style={{ alignItems: 'center' }}>
-            <Text style={styles.profileName}>{user?.name ?? 'Staff Member'}</Text>
+            <Text style={styles.profileName}>{user?.name ?? t('staffMember')}</Text>
             <View style={styles.roleBadge}>
               <Ionicons name="shield-checkmark" size={11} color="rgba(255,255,255,0.9)" />
-              <Text style={styles.roleText}>{user?.role === 'admin' ? 'Administrator' : 'Station Staff'}</Text>
+              <Text style={styles.roleText}>{user?.role === 'admin' ? t('administrator') : t('stationStaff')}</Text>
             </View>
             <Text style={styles.profileId}>KMRL · {user?.employeeId ?? ''}</Text>
           </Animated.View>
@@ -172,42 +174,42 @@ export default function ProfileScreen({ navigation }) {
 
         {/* ── Menu Sections ── */}
         <Animated.View entering={FadeInDown.delay(280).springify()}>
-          <Text style={[styles.groupLabel, { color: theme.colors.subText }]}>ACCOUNT</Text>
+          <Text style={[styles.groupLabel, { color: theme.colors.subText }]}>{t('accountGroup')}</Text>
           <View style={[styles.menuCard, { backgroundColor: theme.colors.card }]}>
             <MenuItem
-              icon="person-outline" label="Display Name"
+              icon="person-outline" label={t('displayName')}
               iconColor="#2563eb" iconBg="#EFF6FF"
               value={user?.name ?? '—'}
-              onPress={() => Alert.alert('Edit', 'Name editing coming soon.')}
+              onPress={() => Alert.alert(t('edit'), t('nameEditingSoon'))}
             />
             <MenuItem
-              icon="id-card-outline" label="Employee ID"
+              icon="id-card-outline" label={t('employeeId')}
               iconColor="#7C3AED" iconBg="#EDE9FE"
               value={user?.employeeId ?? '—'}
-              onPress={() => Alert.alert('Info', 'Employee ID cannot be changed.')}
+              onPress={() => Alert.alert(t('employeeId'), t('employeeIdLocked'))}
               isLast
             />
           </View>
 
-          <Text style={[styles.groupLabel, { color: theme.colors.subText }]}>NAVIGATION</Text>
+          <Text style={[styles.groupLabel, { color: theme.colors.subText }]}>{t('navigationGroup')}</Text>
           <View style={[styles.menuCard, { backgroundColor: theme.colors.card }]}>
             <MenuItem
-              icon="document-text-outline" label="My Documents"
+              icon="document-text-outline" label={t('myDocuments')}
               iconColor="#0891b2" iconBg="#E0F2FE"
               onPress={() => navigation.navigate('MainTabs', { screen: 'HomeStack', params: { screen: 'AllDocs' } })}
             />
             <MenuItem
-              icon="settings-outline" label="App Settings"
+              icon="settings-outline" label={t('appSettings')}
               iconColor="#6366F1" iconBg="rgba(99,102,241,0.1)"
               onPress={() => navigation.navigate('Settings')}
             />
             <MenuItem
-              icon="help-circle-outline" label="Help & Support"
+              icon="help-circle-outline" label={t('helpSupport')}
               iconColor="#D97706" iconBg="#FEF3C7"
-              onPress={() => Alert.alert('Support', 'Email: it@kmrl.co.in')}
+              onPress={() => Alert.alert(t('helpSupport'), t('supportContact'))}
             />
             <MenuItem
-              icon="information-circle-outline" label="About KMRL App"
+              icon="information-circle-outline" label={t('aboutKMRLApp')}
               iconColor="#16A34A" iconBg="#DCFCE7"
               onPress={() => navigation.navigate('About')}
               isLast
@@ -219,7 +221,7 @@ export default function ProfileScreen({ navigation }) {
         <Animated.View entering={FadeInDown.delay(340).springify()}>
           <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
             <Ionicons name="log-out-outline" size={20} color="#EF4444" />
-            <Text style={styles.logoutText}>Sign Out</Text>
+            <Text style={styles.logoutText}>{t('signOut')}</Text>
           </TouchableOpacity>
           <Text style={[styles.versionNote, { color: theme.colors.muted }]}>KMRL App v1.0.0 · Build 100</Text>
         </Animated.View>
@@ -233,24 +235,24 @@ export default function ProfileScreen({ navigation }) {
           <Pressable>
             <Animated.View entering={FadeIn} style={[styles.modalSheet, { backgroundColor: theme.colors.card }]}>
               <View style={[styles.modalHandle, { backgroundColor: theme.colors.border }]} />
-              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Change Profile Photo</Text>
+              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>{t('changeProfilePhoto')}</Text>
 
               <View style={styles.modalActions}>
                 <TouchableOpacity style={styles.modalAction} onPress={pickFromCamera}>
                   <View style={[styles.modalActionIcon, { backgroundColor: '#EFF6FF' }]}>
                     <Ionicons name="camera-outline" size={26} color="#2563eb" />
                   </View>
-                  <Text style={[styles.modalActionLabel, { color: theme.colors.text }]}>Camera</Text>
+                  <Text style={[styles.modalActionLabel, { color: theme.colors.text }]}>{t('camera')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.modalAction} onPress={pickFromGallery}>
                   <View style={[styles.modalActionIcon, { backgroundColor: '#F3F4F6' }]}>
                     <Ionicons name="images-outline" size={26} color="#374151" />
                   </View>
-                  <Text style={[styles.modalActionLabel, { color: theme.colors.text }]}>Gallery</Text>
+                  <Text style={[styles.modalActionLabel, { color: theme.colors.text }]}>{t('gallery')}</Text>
                 </TouchableOpacity>
               </View>
 
-              <Text style={[styles.modalSectionLabel, { color: theme.colors.subText }]}>CHOOSE AVATAR</Text>
+              <Text style={[styles.modalSectionLabel, { color: theme.colors.subText }]}>{t('chooseAvatar')}</Text>
               <View style={styles.avatarGrid}>
                 {AVATARS.map((uri, i) => (
                   <TouchableOpacity
@@ -273,7 +275,7 @@ export default function ProfileScreen({ navigation }) {
               </View>
 
               <TouchableOpacity style={styles.modalCancel} onPress={() => setShowAvatarModal(false)}>
-                <Text style={styles.modalCancelText}>Cancel</Text>
+                <Text style={styles.modalCancelText}>{t('cancel')}</Text>
               </TouchableOpacity>
             </Animated.View>
           </Pressable>

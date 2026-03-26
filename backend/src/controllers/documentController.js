@@ -6,41 +6,27 @@ const { createSummary, isUrgentContent } = require('../services/summaryService')
 const { asyncHandler } = require('../utils/asyncHandler');
 const { AppError } = require('../utils/AppError');
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
 function parseTags(tagsInput) {
   if (!tagsInput) return ['GENERAL'];
   const tags = String(tagsInput)
     .split(',')
-    .map((t) => t.trim().toUpperCase())
+    .map((tag) => tag.trim().toUpperCase())
     .filter(Boolean);
-  const bad = tags.find((t) => !['URGENT', 'GENERAL'].includes(t));
+  const bad = tags.find((tag) => !['URGENT', 'GENERAL'].includes(tag));
   if (bad) throw new AppError(`Unsupported tag: ${bad}`, 400);
   return [...new Set(tags)];
 }
-
-// ─── Controllers ────────────────────────────────────────────────────────────
 
 /** POST /api/documents/upload */
 const uploadDocument = asyncHandler(async (req, res) => {
   if (!req.file) throw new AppError('A file is required', 400);
 
-  console.log('[upload] received file:', {
-    originalname: req.file.originalname,
-    mimetype: req.file.mimetype,
-    size: req.file.size,
-    path: req.file.path,
-  });
-
   const title = req.body.title || req.file.originalname;
   const description = req.body.description || '';
 
-  let tags;
-  if (req.body.tags) {
-    tags = parseTags(req.body.tags);
-  } else {
-    tags = isUrgentContent(title, description) ? ['URGENT'] : ['GENERAL'];
-  }
+  const tags = req.body.tags
+    ? parseTags(req.body.tags)
+    : (isUrgentContent(title, description) ? ['URGENT'] : ['GENERAL']);
 
   const document = await Document.create({
     title,
@@ -54,9 +40,22 @@ const uploadDocument = asyncHandler(async (req, res) => {
     filePath: req.file.path,
     uploadedBy: req.user._id,
     accessRoles: req.body.accessRoles
-      ? req.body.accessRoles.split(',').map((r) => r.trim()).filter(Boolean)
+      ? req.body.accessRoles.split(',').map((role) => role.trim()).filter(Boolean)
       : ['staff', 'admin'],
   });
+
+  const summary = await createSummary({
+    title: document.title,
+    description: document.description,
+    originalName: document.originalName,
+    mimeType: document.mimeType,
+    filePath: document.filePath,
+  });
+
+  document.summary = summary;
+  document.summaryStatus = 'completed';
+  document.lastSummarizedAt = new Date();
+  await document.save();
 
   res.status(201).json({
     success: true,
@@ -103,7 +102,6 @@ const listDocuments = asyncHandler(async (req, res) => {
 /** GET /api/documents/stats */
 const getStats = asyncHandler(async (req, res) => {
   const roleFilter = req.user.role === 'admin' ? {} : { accessRoles: req.user.role };
-
   const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
   const [totalDocs, urgentDocs, recentUploads, recentCount] = await Promise.all([
@@ -113,7 +111,6 @@ const getStats = asyncHandler(async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(5)
       .populate('uploadedBy', 'name employeeId'),
-    // "Unread" proxy: docs uploaded in last 24h
     Document.countDocuments({ ...roleFilter, createdAt: { $gte: oneDayAgo } }),
   ]);
 
@@ -135,6 +132,7 @@ const getDocumentById = asyncHandler(async (req, res) => {
   if (req.user.role !== 'admin' && !document.accessRoles.includes(req.user.role)) {
     throw new AppError('You are not allowed to access this document', 403);
   }
+
   res.status(200).json({
     success: true,
     data: {
@@ -157,7 +155,7 @@ const summarizeDocument = asyncHandler(async (req, res) => {
     description: document.description,
     originalName: document.originalName,
     mimeType: document.mimeType,
-    filePath: document.filePath,   // ← needed for RAG text extraction
+    filePath: document.filePath,
   });
 
   document.summary = summary;
@@ -186,7 +184,7 @@ const updateDocument = asyncHandler(async (req, res) => {
 
   if (req.body.tags) document.tags = parseTags(req.body.tags);
   if (req.body.accessRoles && req.user.role === 'admin') {
-    document.accessRoles = req.body.accessRoles.split(',').map((r) => r.trim()).filter(Boolean);
+    document.accessRoles = req.body.accessRoles.split(',').map((role) => role.trim()).filter(Boolean);
   }
 
   await document.save();
@@ -206,7 +204,6 @@ const deleteDocument = asyncHandler(async (req, res) => {
     throw new AppError('You are not allowed to delete this document', 403);
   }
 
-  // Also remove the file from disk
   try {
     if (fs.existsSync(document.filePath)) fs.unlinkSync(document.filePath);
   } catch {

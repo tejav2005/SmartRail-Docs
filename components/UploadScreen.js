@@ -1,110 +1,395 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, ScrollView, TextInput, Alert, ActivityIndicator, SafeAreaView } from 'react-native';
+import {
+  StyleSheet, Text, View, TouchableOpacity, ScrollView,
+  Alert, ActivityIndicator, SafeAreaView, Pressable, Platform,
+} from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  FadeInDown,
+  FadeIn,
+  ZoomIn,
+} from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import * as DocumentPicker from 'expo-document-picker';
 import { useTheme } from './ThemeContext';
+import { uploadDocument, summarizeDocument } from '../services/api';
+
+function getFileIcon(name = '') {
+  if (name.endsWith('.pdf')) return { icon: 'document-text', color: '#EF4444', bg: '#FEE2E2' };
+  if (name.match(/\.(doc|docx)$/i)) return { icon: 'document', color: '#2563eb', bg: '#EFF6FF' };
+  if (name.match(/\.(jpg|jpeg|png|gif)$/i)) return { icon: 'image', color: '#7C3AED', bg: '#EDE9FE' };
+  return { icon: 'attach', color: '#0891b2', bg: '#E0F2FE' };
+}
+
+function formatBytes(bytes = 0) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function PressButton({ onPress, style, children, disabled }) {
+  const scale = useSharedValue(1);
+  const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+
+  return (
+    <Animated.View style={animStyle}>
+      <Pressable
+        onPressIn={() => { if (!disabled) scale.value = withSpring(0.96, { damping: 14 }); }}
+        onPressOut={() => { scale.value = withSpring(1, { damping: 12 }); }}
+        onPress={disabled ? undefined : onPress}
+        style={style}
+      >
+        {children}
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+function buildUploadFormData(file) {
+  const formData = new FormData();
+
+  if (Platform.OS === 'web' && file.file instanceof File) {
+    // Expo Web: DocumentPicker returns a real browser File object in asset.file
+    formData.append('file', file.file, file.name);
+  } else {
+    // React Native (iOS / Android): use uri-based object that RN fetch understands
+    formData.append('file', {
+      uri: file.uri,
+      name: file.name,
+      type: file.mimeType || 'application/octet-stream',
+    });
+  }
+
+  formData.append('title', file.name);
+  return formData;
+}
+
+function ProgressCard({ progress, statusText, theme }) {
+  return (
+    <Animated.View entering={FadeInDown.delay(120).springify()}>
+      <View style={[styles.progressCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+        <View style={styles.progressHeader}>
+          <View style={styles.progressIconWrap}>
+            <Ionicons name="cloud-upload-outline" size={18} color="#0056b3" />
+          </View>
+          <View style={styles.progressTextWrap}>
+            <Text style={[styles.progressTitle, { color: theme.colors.text }]}>Processing document</Text>
+            <Text style={[styles.progressSubtitle, { color: theme.colors.subText }]}>{statusText}</Text>
+          </View>
+          <Text style={styles.progressPercent}>{`${progress}%`}</Text>
+        </View>
+        <View style={styles.progressTrack}>
+          <View style={[styles.progressFill, { width: `${progress}%` }]} />
+        </View>
+      </View>
+    </Animated.View>
+  );
+}
 
 export default function UploadScreen({ navigation }) {
   const { theme } = useTheme();
-
-  // FUNCTION: Navigate to Home Page
-  const goToHome = () => {
-    navigation.navigate('MainTabs', { screen: 'HomeStack' });
-  };
-
+  const [selectedFile, setSelectedFile] = useState(null);
   const [summary, setSummary] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [selectedFile, setSelectedFile] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [statusText, setStatusText] = useState('');
 
   const handleFilePick = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: ['application/pdf', 'image/*', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+        type: [
+          'application/pdf',
+          'image/*',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        ],
         copyToCacheDirectory: true,
+        multiple: false,
       });
-      if (result.canceled === false) {
+
+      if (!result.canceled && result.assets?.[0]) {
         setSelectedFile(result.assets[0]);
-        Alert.alert('File Selected', result.assets[0].name);
+        setSummary('');
+        setUploadProgress(0);
+        setStatusText('');
       }
-    } catch (error) {
-      Alert.alert('Error', 'Failed to pick document');
+    } catch {
+      Alert.alert('Error', 'Failed to pick document. Please try again.');
     }
   };
 
-  const handleGenerate = () => {
-    if (!selectedFile) { Alert.alert('No File', 'Please select a document first.'); return; }
+  const handleGenerate = async () => {
+    if (!selectedFile) {
+      Alert.alert('No File Selected', 'Please select a document first.');
+      return;
+    }
+
     setIsGenerating(true);
-    setTimeout(() => {
-      const dummySummary = `SUMMARY: ${selectedFile.name}\n\nDATE: ${new Date().toLocaleDateString()}\nSOURCE: Local Upload\n\nKEY POINTS:\n• Document successfully analyzed.\n• Priority levels assessed based on content.\n• Relevant keywords extracted: "Maintenance", "Urgent", "Safety".\n\nFULL SUMMARY:\nThis document outlines the necessary protocol for handling station maintenance. It highlights the importance of timely response to signal failures and outlines the specific engineering teams responsible for different zones.\n\nPriority: HIGH`;
-      setSummary(dummySummary);
+    setSummary('');
+    setUploadProgress(10);
+    setStatusText('Preparing upload...');
+
+    try {
+      const formData = buildUploadFormData(selectedFile);
+
+      setUploadProgress(35);
+      setStatusText('Uploading document to server...');
+      const uploadRes = await uploadDocument(formData);
+
+      const documentId = uploadRes?.data?._id;
+      if (!documentId) {
+        throw new Error('Upload completed, but no document ID was returned.');
+      }
+
+      setUploadProgress(72);
+      setStatusText('Generating AI summary...');
+      const summaryRes = await summarizeDocument(documentId);
+
+      setUploadProgress(100);
+      setStatusText('Summary ready');
+      const generatedSummary = summaryRes?.data?.summary || 'Summary generated successfully.';
+      setSummary(generatedSummary);
+
+      // Navigate to Home so the new doc shows in Recent Documents
+      Alert.alert(
+        '✅ Upload Successful',
+        'Document uploaded and AI summary generated. Navigating to All Documents.',
+        [{
+          text: 'View Documents',
+          onPress: () => {
+            setSelectedFile(null);
+            setSummary('');
+            setUploadProgress(0);
+            navigation.navigate('HomeStack', { screen: 'AllDocs' });
+          },
+        }]
+      );
+    } catch (err) {
+      setUploadProgress(0);
+      setStatusText('');
+      Alert.alert('Upload Failed', err.message || 'Could not upload and summarize this document.');
+    } finally {
       setIsGenerating(false);
-    }, 1500);
+    }
   };
 
-  const handleDownloadPDF = async () => {
+  const handleExport = async () => {
     if (!summary) return;
+
     try {
-      const html = `<html style="font-family: sans-serif; padding: 20px;"><head><meta name="viewport" content="width=device-width, initial-scale=1.0"></head><body><h1 style="color: #0056b3;">KMRL Summary</h1><p style="color: #666; font-size: 12px;">File: ${selectedFile ? selectedFile.name : 'Unknown'}</p><hr style="border: 0; border-top: 1px solid #eee; margin: 10px 0;"><div style="white-space: pre-wrap; font-size: 14px; line-height: 1.6;">${summary}</div></body></html>`;
+      const html = `
+        <html>
+          <body style="font-family: Arial, sans-serif; padding: 32px; color: #111827;">
+            <div style="border-bottom: 3px solid #0056b3; padding-bottom: 16px; margin-bottom: 24px;">
+              <h1 style="color: #0056b3; margin: 0; font-size: 22px;">KMRL Document Summary</h1>
+              <p style="color: #6B7280; margin: 6px 0 0; font-size: 13px;">Kochi Metro Rail Limited · Internal Use Only</p>
+            </div>
+            <div style="background: #F9FAFB; border-radius: 12px; padding: 20px; white-space: pre-wrap; font-size: 14px; line-height: 1.7; color: #374151;">
+              ${summary.replace(/\n/g, '<br />')}
+            </div>
+            <p style="color: #9CA3AF; font-size: 11px; text-align: center; margin-top: 32px;">
+              © ${new Date().getFullYear()} Kochi Metro Rail Limited · Auto-generated by KMRL App
+            </p>
+          </body>
+        </html>
+      `;
       const { uri } = await Print.printToFileAsync({ html });
       if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Save Summary PDF' });
+        await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Export Summary PDF' });
+      } else {
+        Alert.alert('Exported', 'PDF saved to device.');
       }
-    } catch (error) {
-      Alert.alert('Error', 'Failed to create PDF');
+    } catch {
+      Alert.alert('Export Failed', 'Could not create the PDF. Please try again.');
     }
   };
+
+  const fileInfo = selectedFile ? getFileIcon(selectedFile.name) : null;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* UPDATED HEADER: Back Arrow + Title + Download */}
-      <View style={[styles.customHeader, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
-        <TouchableOpacity onPress={goToHome} style={styles.headerLeft}>
-          <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
+      <LinearGradient
+        colors={['#001A47', '#003580', '#0056b3']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.header}
+      >
+        <View style={styles.decor1} />
+        <View style={styles.decor2} />
+        <TouchableOpacity
+          onPress={() => navigation.navigate('MainTabs', { screen: 'HomeStack' })}
+          style={styles.backBtn}
+        >
+          <Ionicons name="arrow-back" size={22} color="#fff" />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Upload Document</Text>
-        {summary ? (
-          <TouchableOpacity onPress={handleDownloadPDF} style={styles.headerRight}>
-            <Ionicons name="download-outline" size={24} color={theme.colors.text} />
-          </TouchableOpacity>
-        ) : (
-          <View style={{ width: 24 }} />
-        )}
-      </View>
-
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <Text style={[styles.instructionText, { color: theme.colors.text }]}>Select a file to begin summarization</Text>
-        
-        <TouchableOpacity style={[styles.uploadArea, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]} onPress={handleFilePick}>
-          {selectedFile ? (
-            <View style={styles.fileInfoContainer}>
-              <Ionicons name="document-text-outline" size={40} color="#0056b3" />
-              <Text style={[styles.fileName, { color: theme.colors.text }]} numberOfLines={1}>{selectedFile.name}</Text>
-              <Text style={styles.fileSize}>{(selectedFile.size / 1024).toFixed(1)} KB</Text>
-              <TouchableOpacity style={styles.changeFileBtn}>
-                <Text style={styles.changeFileText}>Change File</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View style={styles.emptyState}>
-              <Ionicons name="cloud-upload-outline" size={50} color="#aaa" />
-              <Text style={styles.uploadText}>Tap to Select File</Text>
-              <Text style={styles.subText}>PDF, Word, Images</Text>
-            </View>
-          )}
-        </TouchableOpacity>
-
-        <View style={styles.summaryBox}>
-          <Text style={[styles.label, { color: theme.colors.text }]}>AI Summary:</Text>
-          <TextInput
-            style={[styles.textArea, { backgroundColor: theme.colors.card, color: theme.colors.text, borderColor: theme.colors.border }]}
-            multiline numberOfLines={8} placeholder="Summary will appear here..." placeholderTextColor="#aaa" value={summary} editable={false}
-          />
-          <TouchableOpacity style={[styles.actionBtn, isGenerating && styles.disabledBtn]} onPress={handleGenerate} disabled={isGenerating}>
-            {isGenerating ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Generate Summary</Text>}
-          </TouchableOpacity>
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle}>Upload Document</Text>
+          <Text style={styles.headerSub}>Real upload with AI summary</Text>
         </View>
+        <View style={{ width: 40 }} />
+      </LinearGradient>
+
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Animated.View entering={FadeInDown.delay(80).springify()}>
+          <Text style={[styles.sectionLabel, { color: theme.colors.subText }]}>SELECT FILE</Text>
+
+          {!selectedFile ? (
+            <PressButton
+              onPress={handleFilePick}
+              style={[styles.dropZone, { borderColor: '#0056b3', backgroundColor: theme.colors.card }]}
+            >
+              <View style={styles.dropZoneInner}>
+                <LinearGradient colors={['#EFF6FF', '#DBEAFE']} style={styles.dropIconWrap}>
+                  <Ionicons name="cloud-upload-outline" size={38} color="#2563eb" />
+                </LinearGradient>
+                <Text style={[styles.dropTitle, { color: theme.colors.text }]}>Tap to Select File</Text>
+                <Text style={[styles.dropSub, { color: theme.colors.muted }]}>PDF, Word Document, or Image</Text>
+                <View style={styles.dropTypeRow}>
+                  {['PDF', 'DOCX', 'JPG', 'PNG'].map((type) => (
+                    <View key={type} style={styles.typeChip}>
+                      <Text style={styles.typeChipText}>{type}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            </PressButton>
+          ) : (
+            <Animated.View entering={ZoomIn.duration(280).springify()}>
+              <View style={[styles.fileCard, { backgroundColor: theme.colors.card, borderColor: `${fileInfo.color}40` }]}>
+                <View style={[styles.fileAccent, { backgroundColor: fileInfo.color }]} />
+                <View style={[styles.fileIconWrap, { backgroundColor: fileInfo.bg }]}>
+                  <Ionicons name={fileInfo.icon} size={28} color={fileInfo.color} />
+                </View>
+
+                <View style={styles.fileDetails}>
+                  <Text style={[styles.fileName, { color: theme.colors.text }]} numberOfLines={1}>
+                    {selectedFile.name}
+                  </Text>
+                  <View style={styles.fileMetaRow}>
+                    <View style={[styles.fileSizeChip, { backgroundColor: theme.colors.background }]}>
+                      <Ionicons name="server-outline" size={11} color={theme.colors.muted} />
+                      <Text style={[styles.fileSizeText, { color: theme.colors.subText }]}>
+                        {formatBytes(selectedFile.size)}
+                      </Text>
+                    </View>
+                    <View style={[styles.fileTypeChip, { backgroundColor: fileInfo.bg }]}>
+                      <Text style={[styles.fileTypeText, { color: fileInfo.color }]}>
+                        {selectedFile.name.split('.').pop().toUpperCase()}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                <TouchableOpacity onPress={handleFilePick} style={styles.changeBtn} activeOpacity={0.7}>
+                  <Ionicons name="swap-horizontal" size={16} color="#0056b3" />
+                </TouchableOpacity>
+              </View>
+            </Animated.View>
+          )}
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.delay(160).springify()}>
+          <PressButton
+            onPress={handleGenerate}
+            disabled={isGenerating || !selectedFile}
+            style={[
+              styles.generateBtn,
+              (!selectedFile || isGenerating) && styles.generateBtnDisabled,
+            ]}
+          >
+            <LinearGradient
+              colors={!selectedFile || isGenerating ? ['#9CA3AF', '#9CA3AF'] : ['#0056b3', '#1976D2']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.generateBtnGradient}
+            >
+              {isGenerating ? (
+                <>
+                  <ActivityIndicator color="#fff" size="small" />
+                  <Text style={styles.generateBtnText}>Uploading and summarizing...</Text>
+                </>
+              ) : (
+                <>
+                  <Ionicons name="flash" size={19} color="#fff" />
+                  <Text style={styles.generateBtnText}>Upload and Generate Summary</Text>
+                </>
+              )}
+            </LinearGradient>
+          </PressButton>
+        </Animated.View>
+
+        {isGenerating ? (
+          <ProgressCard progress={uploadProgress} statusText={statusText} theme={theme} />
+        ) : null}
+
+        {(summary || isGenerating) && (
+          <Animated.View entering={FadeInDown.delay(60).springify()}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={[styles.sectionLabel, { color: theme.colors.subText, marginBottom: 0 }]}>AI SUMMARY</Text>
+              <View style={styles.aiBadge}>
+                <Ionicons name="flash" size={11} color="#7C3AED" />
+                <Text style={styles.aiBadgeText}>AI Generated</Text>
+              </View>
+            </View>
+
+            <View style={[styles.summaryCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+              <LinearGradient
+                colors={['#4F46E5', '#7C3AED']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.summaryCardHeader}
+              >
+                <Ionicons name="document-text" size={14} color="rgba(255,255,255,0.9)" />
+                <Text style={styles.summaryCardHeaderText}>
+                  {selectedFile?.name ?? 'Document'}
+                </Text>
+              </LinearGradient>
+
+              {isGenerating ? (
+                <View style={styles.summaryLoadingWrap}>
+                  <ActivityIndicator color="#7C3AED" size="large" />
+                  <Text style={[styles.summaryLoadingText, { color: theme.colors.subText }]}>
+                    {statusText || 'Working on your document...'}
+                  </Text>
+                </View>
+              ) : (
+                <Text style={[styles.summaryText, { color: theme.colors.text }]}>
+                  {summary}
+                </Text>
+              )}
+            </View>
+
+            {summary ? (
+              <Animated.View entering={FadeIn.delay(200)}>
+                <PressButton onPress={handleExport} style={styles.exportBtn}>
+                  <View style={styles.exportBtnInner}>
+                    <View style={styles.exportIconWrap}>
+                      <Ionicons name="download-outline" size={20} color="#0056b3" />
+                    </View>
+                    <View style={styles.exportTextWrap}>
+                      <Text style={[styles.exportTitle, { color: theme.colors.text }]}>Export as PDF</Text>
+                      <Text style={[styles.exportSub, { color: theme.colors.subText }]}>
+                        Share or save the summary report
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={theme.colors.muted} />
+                  </View>
+                </PressButton>
+              </Animated.View>
+            ) : null}
+          </Animated.View>
+        )}
+
+        <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -112,25 +397,257 @@ export default function UploadScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  customHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15, borderBottomWidth: 1, paddingTop: 40, elevation: 2 },
-  headerLeft: { padding: 5, marginRight: 10 }, // Back button style
-  headerRight: { padding: 5 }, // Download button style
-  headerTitle: { fontSize: 18, fontWeight: 'bold', flex: 1, textAlign: 'center' },
-  scrollContent: { padding: 20 },
-  instructionText: { fontSize: 14, marginBottom: 15 },
-  uploadArea: { borderRadius: 15, height: 180, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderStyle: 'dashed', marginBottom: 25, overflow: 'hidden' },
-  emptyState: { alignItems: 'center' },
-  uploadText: { fontSize: 16, fontWeight: '600', color: '#555', marginTop: 10 },
-  subText: { fontSize: 12, color: '#999' },
-  fileInfoContainer: { alignItems: 'center', width: '100%' },
-  fileName: { fontSize: 16, fontWeight: 'bold', marginTop: 10, paddingHorizontal: 20, textAlign: 'center' },
-  fileSize: { fontSize: 12, color: '#888', marginTop: 5, marginBottom: 10 },
-  changeFileBtn: { backgroundColor: '#f0f0f0', paddingHorizontal: 15, paddingVertical: 6, borderRadius: 15 },
-  changeFileText: { color: '#555', fontSize: 12, fontWeight: '600' },
-  summaryBox: { marginBottom: 20 },
-  label: { fontSize: 16, fontWeight: 'bold', marginBottom: 10 },
-  textArea: { borderRadius: 10, padding: 15, textAlignVertical: 'top', fontSize: 14, borderWidth: 1, marginBottom: 15, minHeight: 150 },
-  actionBtn: { backgroundColor: '#0056b3', padding: 15, borderRadius: 10, alignItems: 'center' },
-  disabledBtn: { backgroundColor: '#ccc' },
-  btnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  header: {
+    paddingTop: 44,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    overflow: 'hidden',
+  },
+  decor1: {
+    position: 'absolute',
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    top: -50,
+    right: -30,
+  },
+  decor2: {
+    position: 'absolute',
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    bottom: -20,
+    left: 60,
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 13,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerCenter: { flex: 1, alignItems: 'center' },
+  headerTitle: { fontSize: 18, fontWeight: '800', color: '#fff' },
+  headerSub: { fontSize: 12, color: 'rgba(255,255,255,0.55)', marginTop: 2 },
+  scrollContent: { padding: 20, paddingTop: 22 },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+    marginBottom: 10,
+    textTransform: 'uppercase',
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    marginTop: 4,
+  },
+  dropZone: {
+    borderRadius: 20,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    marginBottom: 16,
+    overflow: 'hidden',
+  },
+  dropZoneInner: { alignItems: 'center', padding: 36 },
+  dropIconWrap: {
+    width: 82,
+    height: 82,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  dropTitle: { fontSize: 17, fontWeight: '700', marginBottom: 5 },
+  dropSub: { fontSize: 13, marginBottom: 16 },
+  dropTypeRow: { flexDirection: 'row', gap: 8 },
+  typeChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  typeChipText: { fontSize: 11, fontWeight: '700', color: '#2563eb' },
+  fileCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 18,
+    borderWidth: 1.5,
+    overflow: 'hidden',
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  fileAccent: { width: 4, alignSelf: 'stretch', borderRadius: 2, margin: 14, marginRight: 0 },
+  fileIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 15,
+    justifyContent: 'center',
+    alignItems: 'center',
+    margin: 14,
+    marginLeft: 10,
+    marginRight: 12,
+  },
+  fileDetails: { flex: 1, paddingVertical: 16 },
+  fileName: { fontSize: 14, fontWeight: '700', marginBottom: 8 },
+  fileMetaRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  fileSizeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  fileSizeText: { fontSize: 11 },
+  fileTypeChip: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  fileTypeText: { fontSize: 11, fontWeight: '800' },
+  changeBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 11,
+    backgroundColor: '#EFF6FF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 14,
+  },
+  generateBtn: { marginBottom: 18, borderRadius: 16, overflow: 'hidden' },
+  generateBtnDisabled: { opacity: 0.65 },
+  generateBtnGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 56,
+    gap: 10,
+    borderRadius: 16,
+  },
+  generateBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  progressCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 16,
+    marginBottom: 20,
+  },
+  progressHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  progressIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    backgroundColor: '#EFF6FF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  progressTextWrap: { flex: 1 },
+  progressTitle: { fontSize: 15, fontWeight: '700', marginBottom: 2 },
+  progressSubtitle: { fontSize: 12 },
+  progressPercent: { fontSize: 16, fontWeight: '800', color: '#0056b3' },
+  progressTrack: {
+    height: 10,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#0056b3',
+    borderRadius: 999,
+  },
+  aiBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#EDE9FE',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  aiBadgeText: { fontSize: 11, fontWeight: '700', color: '#7C3AED' },
+  summaryCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    overflow: 'hidden',
+    marginBottom: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 5,
+  },
+  summaryCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  summaryCardHeaderText: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 13,
+    fontWeight: '600',
+    flex: 1,
+  },
+  summaryLoadingWrap: { alignItems: 'center', padding: 36, gap: 14 },
+  summaryLoadingText: { fontSize: 14, fontWeight: '500', textAlign: 'center' },
+  summaryText: {
+    padding: 18,
+    fontSize: 13.5,
+    lineHeight: 22,
+    fontFamily: 'monospace',
+  },
+  exportBtn: {
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  exportBtnInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0F7FF',
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: 'rgba(0,86,179,0.15)',
+    padding: 16,
+    gap: 14,
+  },
+  exportIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 13,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  exportTextWrap: { flex: 1 },
+  exportTitle: { fontSize: 15, fontWeight: '700', marginBottom: 3 },
+  exportSub: { fontSize: 12 },
 });

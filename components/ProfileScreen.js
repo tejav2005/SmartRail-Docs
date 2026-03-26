@@ -1,341 +1,413 @@
-import React, { useState } from 'react';
-import { 
-  StyleSheet, 
-  Text, 
-  View, 
-  TouchableOpacity, 
-  ScrollView, 
-  SafeAreaView, 
-  Alert, 
-  Image,
-  Modal 
+import React, { useState, useEffect } from 'react';
+import {
+  StyleSheet, Text, View, TouchableOpacity, ScrollView,
+  SafeAreaView, Alert, Image, Modal, Pressable,
 } from 'react-native';
+import Animated, {
+  FadeInDown, FadeIn, ZoomIn,
+} from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from './ThemeContext';
+import { useAuth } from './AuthContext';
+import { getDocumentStats, getMeetings } from '../services/api';
 
+const DICEBEAR = 'https://api.dicebear.com/7.x/avataaars/png?seed=';
+
+const AVATARS = [
+  `${DICEBEAR}RahulManager&backgroundColor=ffffff&clothesColor=0056b3`,
+  `${DICEBEAR}AnilDriver&backgroundColor=ffffff&clothesColor=228B22`,
+  `${DICEBEAR}PriyaStaff&backgroundColor=ffffff&clothesColor=8B0000`,
+  `${DICEBEAR}KumarSec&backgroundColor=ffffff&clothesColor=4B0082`,
+  `${DICEBEAR}AishaComm&backgroundColor=ffffff&clothesColor=B8860B`,
+  `${DICEBEAR}VivekOff&backgroundColor=ffffff&clothesColor=008080`,
+];
+
+// ─── Menu Row ──────────────────────────────────────────────────────────────
+function MenuItem({ icon, label, iconColor, iconBg, onPress, isLast, value }) {
+  const { theme } = useTheme();
+  return (
+    <TouchableOpacity
+      style={[
+        styles.menuRow,
+        !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border },
+      ]}
+      onPress={onPress}
+      activeOpacity={0.65}
+    >
+      <View style={[styles.menuIcon, { backgroundColor: iconBg }]}>
+        <Ionicons name={icon} size={19} color={iconColor} />
+      </View>
+      <Text style={[styles.menuLabel, { color: theme.colors.text }]}>{label}</Text>
+      {value ? (
+        <Text style={[styles.menuValue, { color: theme.colors.muted }]}>{value}</Text>
+      ) : null}
+      <Ionicons name="chevron-forward" size={15} color={theme.colors.muted} />
+    </TouchableOpacity>
+  );
+}
+
+// ─── Main Screen ───────────────────────────────────────────────────────────
 export default function ProfileScreen({ navigation }) {
   const { theme } = useTheme();
-
+  const { user, signOut } = useAuth();
   const [profilePic, setProfilePic] = useState(null);
-  const [isModalVisible, setModalVisible] = useState(false);
 
-  const avatars = [
-    'https://api.dicebear.com/7.x/avataaars/png?seed=ManagerRahul&backgroundColor=ffffff&clothesColor=0056b3&accessoriesChance=10',
-    'https://api.dicebear.com/7.x/avataaars/png?seed=DriverAnil&backgroundColor=ffffff&clothesColor=0056b3&accessoriesChance=5',
-    'https://api.dicebear.com/7.x/avataaars/png?seed=StaffPriya&backgroundColor=ffffff&clothesColor=0056b3&accessoriesChance=15',
-    'https://api.dicebear.com/7.x/avataaars/png?seed=SecurityKumar&backgroundColor=ffffff&clothesColor=0056b3&topChance=0',
-    'https://api.dicebear.com/7.x/avataaars/png?seed=CommuterAisha&backgroundColor=ffffff&clothesColor=0056b3&accessoriesChance=0',
-    'https://api.dicebear.com/7.x/avataaars/png?seed=OfficerVivek&backgroundColor=ffffff&clothesColor=0056b3&accessoriesChance=20',
-  ];
-
-  const takePhoto = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission Denied', 'Camera access is required.');
-      return;
-    }
-
-    let result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 1,
-      cameraType: ImagePicker.CameraType.front,
+  // Restore profile photo from storage on mount
+  useEffect(() => {
+    AsyncStorage.getItem('kmrl_profile_pic').then((uri) => {
+      if (uri) setProfilePic(uri);
     });
+  }, []);
+  const [showAvatarModal, setShowAvatarModal] = useState(false);
+  const [stats, setStats] = useState([
+    { label: 'Documents', value: '—' },
+    { label: 'Meetings',  value: '—' },
+    { label: 'Alerts',    value: '—' },
+  ]);
 
+  // Load live stats
+  useEffect(() => {
+    async function loadStats() {
+      try {
+        const [statsRes, meetingsRes] = await Promise.all([
+          getDocumentStats(),
+          getMeetings(),
+        ]);
+        setStats([
+          { label: 'Documents', value: String(statsRes.data.totalDocs ?? 0) },
+          { label: 'Meetings',  value: String(meetingsRes.data?.length ?? 0) },
+          { label: 'Alerts',    value: String(statsRes.data.urgentDocs ?? 0) },
+        ]);
+      } catch {
+        // Keep dashes on error
+      }
+    }
+    loadStats();
+  }, []);
+
+  // Use avatar from DiceBear seeded with employeeId for consistent avatar
+  const avatarUri = profilePic ?? `${DICEBEAR}${user?.employeeId ?? 'KMRL'}\u0026backgroundColor=ffffff\u0026clothesColor=0056b3`;
+
+  const pickFromCamera = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') { Alert.alert('Permission Denied', 'Camera access is required.'); return; }
+    const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, aspect: [1, 1], quality: 1 });
     if (!result.canceled) {
-      setProfilePic(result.assets[0].uri);
-      setModalVisible(false);
+      const uri = result.assets[0].uri;
+      setProfilePic(uri);
+      await AsyncStorage.setItem('kmrl_profile_pic', uri);
+      setShowAvatarModal(false);
     }
   };
 
   const pickFromGallery = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission Denied', 'Gallery access is required.');
-      return;
-    }
-
-    let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 1,
-    });
-
+    if (status !== 'granted') { Alert.alert('Permission Denied', 'Gallery access is required.'); return; }
+    const result = await ImagePicker.launchImageLibraryAsync({ allowsEditing: true, aspect: [1, 1], quality: 1 });
     if (!result.canceled) {
-      setProfilePic(result.assets[0].uri);
-      setModalVisible(false);
+      const uri = result.assets[0].uri;
+      setProfilePic(uri);
+      await AsyncStorage.setItem('kmrl_profile_pic', uri);
+      setShowAvatarModal(false);
     }
-  };
-
-  const selectAvatar = (uri) => {
-    setProfilePic(uri);
-    setModalVisible(false);
   };
 
   const handleLogout = () => {
-    Alert.alert('Logout', 'Are you sure you want to logout?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Yes', onPress: () => navigation.replace('Login') },
-    ]);
+    signOut();
   };
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <ScrollView style={styles.scrollView}>
-        
-        <View style={styles.header}>
-          <View style={styles.imageContainer}>
+      <ScrollView showsVerticalScrollIndicator={false}>
+
+        {/* ── Header Banner ── */}
+        <LinearGradient
+          colors={['#001A47', '#003580', '#0056b3']}
+          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+          style={styles.header}
+        >
+          <View style={styles.decor1} />
+          <View style={styles.decor2} />
+
+          {/* Avatar */}
+          <Animated.View entering={ZoomIn.delay(100).springify()} style={styles.avatarWrap}>
             <Image
-              source={profilePic ? { uri: profilePic } : { uri: 'https://via.placeholder.com/150' }}
-              style={styles.profileImage}
+              source={{ uri: avatarUri }}
+              style={styles.avatar}
             />
-            <TouchableOpacity style={styles.cameraIcon} onPress={() => setModalVisible(true)}>
-              <Text style={{ fontSize: 18 }}>📷</Text>
+            <TouchableOpacity style={styles.cameraBtn} onPress={() => setShowAvatarModal(true)}>
+              <Ionicons name="camera" size={15} color="#0056b3" />
             </TouchableOpacity>
+          </Animated.View>
+
+          <Animated.View entering={FadeInDown.delay(180).springify()} style={{ alignItems: 'center' }}>
+            <Text style={styles.profileName}>{user?.name ?? 'Staff Member'}</Text>
+            <View style={styles.roleBadge}>
+              <Ionicons name="shield-checkmark" size={11} color="rgba(255,255,255,0.9)" />
+              <Text style={styles.roleText}>{user?.role === 'admin' ? 'Administrator' : 'Station Staff'}</Text>
+            </View>
+            <Text style={styles.profileId}>KMRL · {user?.employeeId ?? ''}</Text>
+          </Animated.View>
+        </LinearGradient>
+
+        {/* ── Stats Strip ── */}
+        <Animated.View entering={FadeInDown.delay(220).springify()}>
+          <View style={[styles.statsStrip, { backgroundColor: theme.colors.card }]}>
+            {stats.map((s, i) => (
+              <React.Fragment key={s.label}>
+                <View style={styles.statItem}>
+                  <Text style={[styles.statValue, { color: '#0056b3' }]}>{s.value}</Text>
+                  <Text style={[styles.statLabel, { color: theme.colors.subText }]}>{s.label}</Text>
+                </View>
+                {i < stats.length - 1 && (
+                  <View style={[styles.statDivider, { backgroundColor: theme.colors.border }]} />
+                )}
+              </React.Fragment>
+            ))}
+          </View>
+        </Animated.View>
+
+        {/* ── Menu Sections ── */}
+        <Animated.View entering={FadeInDown.delay(280).springify()}>
+          <Text style={[styles.groupLabel, { color: theme.colors.subText }]}>ACCOUNT</Text>
+          <View style={[styles.menuCard, { backgroundColor: theme.colors.card }]}>
+            <MenuItem
+              icon="person-outline" label="Display Name"
+              iconColor="#2563eb" iconBg="#EFF6FF"
+              value={user?.name ?? '—'}
+              onPress={() => Alert.alert('Edit', 'Name editing coming soon.')}
+            />
+            <MenuItem
+              icon="id-card-outline" label="Employee ID"
+              iconColor="#7C3AED" iconBg="#EDE9FE"
+              value={user?.employeeId ?? '—'}
+              onPress={() => Alert.alert('Info', 'Employee ID cannot be changed.')}
+              isLast
+            />
           </View>
 
-          <Text style={styles.name}>Rahul Kumar</Text>
-          <Text style={styles.role}>Station Manager</Text>
-          <Text style={styles.id}>ID: KMRL-2024-88</Text>
-        </View>
+          <Text style={[styles.groupLabel, { color: theme.colors.subText }]}>NAVIGATION</Text>
+          <View style={[styles.menuCard, { backgroundColor: theme.colors.card }]}>
+            <MenuItem
+              icon="document-text-outline" label="My Documents"
+              iconColor="#0891b2" iconBg="#E0F2FE"
+              onPress={() => navigation.navigate('MainTabs', { screen: 'HomeStack', params: { screen: 'AllDocs' } })}
+            />
+            <MenuItem
+              icon="settings-outline" label="App Settings"
+              iconColor="#6366F1" iconBg="rgba(99,102,241,0.1)"
+              onPress={() => navigation.navigate('Settings')}
+            />
+            <MenuItem
+              icon="help-circle-outline" label="Help & Support"
+              iconColor="#D97706" iconBg="#FEF3C7"
+              onPress={() => Alert.alert('Support', 'Email: it@kmrl.co.in')}
+            />
+            <MenuItem
+              icon="information-circle-outline" label="About KMRL App"
+              iconColor="#16A34A" iconBg="#DCFCE7"
+              onPress={() => navigation.navigate('About')}
+              isLast
+            />
+          </View>
+        </Animated.View>
 
-        <View style={[styles.menuSection, { backgroundColor: theme.colors.card }]}>
-          
-          <TouchableOpacity 
-            style={styles.menuItem} 
-            onPress={() => Alert.alert('My Documents', 'Coming soon')}
-          >
-            <View style={styles.menuLeft}>
-              <Ionicons name="document-text-outline" size={24} color="#333" />
-              <Text style={[styles.menuText, { color: theme.colors.text }]}>My Documents</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#ccc" />
+        {/* ── Logout ── */}
+        <Animated.View entering={FadeInDown.delay(340).springify()}>
+          <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
+            <Ionicons name="log-out-outline" size={20} color="#EF4444" />
+            <Text style={styles.logoutText}>Sign Out</Text>
           </TouchableOpacity>
+          <Text style={[styles.versionNote, { color: theme.colors.muted }]}>KMRL App v1.0.0 · Build 100</Text>
+        </Animated.View>
 
-          <View style={[styles.menuDivider, { backgroundColor: theme.colors.border }]} />
-
-          <TouchableOpacity 
-            style={styles.menuItem} 
-            onPress={() => navigation.navigate('Settings')}
-          >
-            <View style={styles.menuLeft}>
-              <Ionicons name="settings-outline" size={24} color="#333" />
-              <Text style={[styles.menuText, { color: theme.colors.text }]}>App Settings</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#ccc" />
-          </TouchableOpacity>
-
-          <View style={[styles.menuDivider, { backgroundColor: theme.colors.border }]} />
-
-          <TouchableOpacity 
-            style={styles.menuItem} 
-            onPress={() => Alert.alert('Help', 'Contact IT')}
-          >
-            <View style={styles.menuLeft}>
-              <Ionicons name="help-circle-outline" size={24} color="#333" />
-              <Text style={[styles.menuText, { color: theme.colors.text }]}>Help & Support</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#ccc" />
-          </TouchableOpacity>
-
-          <View style={[styles.menuDivider, { backgroundColor: theme.colors.border }]} />
-
-          <TouchableOpacity 
-            style={styles.menuItem} 
-            onPress={() => navigation.navigate('About')}
-          >
-            <View style={styles.menuLeft}>
-              <Ionicons name="information-circle-outline" size={24} color="#333" />
-              <Text style={[styles.menuText, { color: theme.colors.text }]}>About KMRL App</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#ccc" />
-          </TouchableOpacity>
-
-        </View>
-
-        <View style={styles.footerSection}>
-          <TouchableOpacity 
-            style={[styles.logoutBtn, { backgroundColor: theme.colors.card, borderColor: '#ff4d4d' }]} 
-            onPress={handleLogout}
-          >
-            <Text style={styles.logoutText}>Logout</Text>
-          </TouchableOpacity>
-        </View>
-
+        <View style={{ height: 30 }} />
       </ScrollView>
 
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={isModalVisible}
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: theme.colors.card }]}>
-            
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Update Profile Photo</Text>
+      {/* ── Avatar Picker Modal ── */}
+      <Modal animationType="slide" transparent visible={showAvatarModal} onRequestClose={() => setShowAvatarModal(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowAvatarModal(false)}>
+          <Pressable>
+            <Animated.View entering={FadeIn} style={[styles.modalSheet, { backgroundColor: theme.colors.card }]}>
+              <View style={[styles.modalHandle, { backgroundColor: theme.colors.border }]} />
+              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Change Profile Photo</Text>
 
-              <TouchableOpacity style={[styles.modalButton, { backgroundColor: '#0056b3' }]} onPress={takePhoto}>
-                <Text style={styles.buttonText}>📷 Take Photo (Selfie)</Text>
-              </TouchableOpacity>
+              <View style={styles.modalActions}>
+                <TouchableOpacity style={styles.modalAction} onPress={pickFromCamera}>
+                  <View style={[styles.modalActionIcon, { backgroundColor: '#EFF6FF' }]}>
+                    <Ionicons name="camera-outline" size={26} color="#2563eb" />
+                  </View>
+                  <Text style={[styles.modalActionLabel, { color: theme.colors.text }]}>Camera</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.modalAction} onPress={pickFromGallery}>
+                  <View style={[styles.modalActionIcon, { backgroundColor: '#F3F4F6' }]}>
+                    <Ionicons name="images-outline" size={26} color="#374151" />
+                  </View>
+                  <Text style={[styles.modalActionLabel, { color: theme.colors.text }]}>Gallery</Text>
+                </TouchableOpacity>
+              </View>
 
-              <TouchableOpacity style={[styles.modalButton, { backgroundColor: '#555' }]} onPress={pickFromGallery}>
-                <Text style={styles.buttonText}>🖼️ Upload from Gallery</Text>
-              </TouchableOpacity>
-
-              <Text style={[styles.avatarSectionTitle, { color: theme.colors.text }]}>
-                Or choose an Avatar:
-              </Text>
-              
+              <Text style={[styles.modalSectionLabel, { color: theme.colors.subText }]}>CHOOSE AVATAR</Text>
               <View style={styles.avatarGrid}>
-                {avatars.map((avatarUri, index) => (
-                  <TouchableOpacity 
-                    key={index} 
-                    onPress={() => selectAvatar(avatarUri)}
-                    style={styles.avatarTouchable}
+                {AVATARS.map((uri, i) => (
+                  <TouchableOpacity
+                    key={i}
+                    onPress={async () => {
+                      setProfilePic(uri);
+                      await AsyncStorage.setItem('kmrl_profile_pic', uri);
+                      setShowAvatarModal(false);
+                    }}
+                    style={[styles.avatarThumbWrap, profilePic === uri && styles.avatarThumbActive]}
                   >
-                    <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+                    <Image source={{ uri }} style={styles.avatarThumb} />
+                    {profilePic === uri && (
+                      <View style={styles.avatarCheckBadge}>
+                        <Ionicons name="checkmark" size={12} color="#fff" />
+                      </View>
+                    )}
                   </TouchableOpacity>
                 ))}
               </View>
 
-              <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeButton}>
-                <Text style={{ color: '#ff4d4d', fontWeight: 'bold', fontSize: 16 }}>Close</Text>
+              <TouchableOpacity style={styles.modalCancel} onPress={() => setShowAvatarModal(false)}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
-            </ScrollView>
-
-          </View>
-        </View>
+            </Animated.View>
+          </Pressable>
+        </Pressable>
       </Modal>
-
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scrollView: { flex: 1 },
+
+  // Header
   header: {
-    backgroundColor: '#0056b3',
-    padding: 30,
-    paddingTop: 50,
     alignItems: 'center',
-    borderBottomLeftRadius: 30,
-    borderBottomRightRadius: 30,
-    marginBottom: 20,
+    paddingTop: 40,
+    paddingBottom: 34,
+    paddingHorizontal: 20,
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
+    overflow: 'hidden',
   },
-  imageContainer: {
-    width: 120,
-    height: 120,
-    marginBottom: 10,
+  decor1: {
+    position: 'absolute', width: 180, height: 180, borderRadius: 90,
+    backgroundColor: 'rgba(255,255,255,0.04)', top: -60, right: -50,
   },
-  profileImage: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    borderWidth: 3,
-    borderColor: '#fff',
+  decor2: {
+    position: 'absolute', width: 100, height: 100, borderRadius: 50,
+    backgroundColor: 'rgba(255,255,255,0.04)', bottom: -20, left: -20,
   },
-  cameraIcon: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
+  avatarWrap: { width: 106, height: 106, marginBottom: 14 },
+  avatar: {
+    width: 106, height: 106, borderRadius: 53,
+    borderWidth: 3, borderColor: '#fff',
+  },
+  cameraBtn: {
+    position: 'absolute', bottom: 2, right: 2,
+    width: 30, height: 30, borderRadius: 15,
     backgroundColor: '#fff',
-    padding: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#ddd',
+    justifyContent: 'center', alignItems: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15, shadowRadius: 4, elevation: 4,
   },
-  name: { color: '#fff', fontSize: 22, fontWeight: 'bold' },
-  role: { color: '#e0e0e0', fontSize: 14, marginTop: 5 },
-  id: { color: '#e0e0e0', fontSize: 12, marginTop: 2 },
-  menuSection: {
+  profileName: { fontSize: 22, fontWeight: '800', color: '#fff', marginBottom: 8 },
+  roleBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    paddingHorizontal: 14, paddingVertical: 5,
+    borderRadius: 20, marginBottom: 6,
+  },
+  roleText: { fontSize: 12, fontWeight: '700', color: '#fff' },
+  profileId: { fontSize: 12, color: 'rgba(255,255,255,0.5)' },
+
+  // Stats
+  statsStrip: {
+    flexDirection: 'row',
     marginHorizontal: 20,
-    borderRadius: 15,
-    padding: 10,
-    marginBottom: 30,
+    marginTop: 18,
+    borderRadius: 18,
+    padding: 18,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 8, elevation: 4,
   },
-  menuItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 15,
+  statItem: { flex: 1, alignItems: 'center' },
+  statValue: { fontSize: 22, fontWeight: '800' },
+  statLabel: { fontSize: 11, marginTop: 3, fontWeight: '500' },
+  statDivider: { width: StyleSheet.hairlineWidth },
+
+  // Menu
+  groupLabel: {
+    fontSize: 11, fontWeight: '700', letterSpacing: 1.5,
+    marginHorizontal: 20, marginTop: 22, marginBottom: 8,
   },
-  menuLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  menuCard: {
+    marginHorizontal: 20,
+    borderRadius: 18,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3,
   },
-  menuText: {
-    fontSize: 16,
-    marginLeft: 15,
+  menuRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 14, paddingHorizontal: 16, gap: 14,
   },
-  menuDivider: {
-    height: 1,
-    marginHorizontal: 15,
-  },
-  footerSection: { paddingHorizontal: 20, paddingBottom: 40 },
+  menuIcon: { width: 38, height: 38, borderRadius: 11, justifyContent: 'center', alignItems: 'center' },
+  menuLabel: { flex: 1, fontSize: 15, fontWeight: '500' },
+  menuValue: { fontSize: 13, marginRight: 4 },
+
+  // Logout
   logoutBtn: {
-    padding: 15,
-    borderRadius: 10,
-    borderWidth: 1,
-    alignItems: 'center',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 10,
+    marginHorizontal: 20, marginTop: 22,
+    paddingVertical: 15,
+    borderRadius: 16,
+    borderWidth: 1.5, borderColor: 'rgba(239,68,68,0.3)',
+    backgroundColor: 'rgba(239,68,68,0.05)',
   },
-  logoutText: {
-    color: '#ff4d4d',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
+  logoutText: { fontSize: 16, fontWeight: '700', color: '#EF4444' },
+  versionNote: { textAlign: 'center', fontSize: 11, marginTop: 14 },
+
+  // Modal
   modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    flex: 1, justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.45)',
   },
-  modalContent: {
-    padding: 20,
-    borderRadius: 15,
-    width: '90%',
-    alignItems: 'center',
+  modalSheet: {
+    borderTopLeftRadius: 28, borderTopRightRadius: 28,
+    padding: 24, paddingBottom: 36,
   },
-  modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
-  modalButton: {
-    padding: 12,
-    borderRadius: 8,
-    width: '100%',
-    alignItems: 'center',
-    marginBottom: 10,
+  modalHandle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 18 },
+  modalTitle: { fontSize: 18, fontWeight: '800', textAlign: 'center', marginBottom: 22 },
+  modalActions: { flexDirection: 'row', justifyContent: 'center', gap: 28, marginBottom: 26 },
+  modalAction: { alignItems: 'center', gap: 8 },
+  modalActionIcon: { width: 64, height: 64, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
+  modalActionLabel: { fontSize: 13, fontWeight: '600' },
+  modalSectionLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 1.5, textAlign: 'center', marginBottom: 14 },
+  avatarGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginBottom: 22 },
+  avatarThumbWrap: {
+    borderRadius: 36, borderWidth: 2.5,
+    borderColor: 'transparent', overflow: 'hidden',
+    position: 'relative',
   },
-  buttonText: { color: '#fff', fontSize: 16 },
-  avatarSectionTitle: { marginTop: 15, marginBottom: 10, fontWeight: 'bold', textAlign: 'center' },
-  avatarGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    marginBottom: 10,
+  avatarThumbActive: { borderColor: '#0056b3' },
+  avatarThumb: { width: 66, height: 66 },
+  avatarCheckBadge: {
+    position: 'absolute', bottom: 2, right: 2,
+    width: 20, height: 20, borderRadius: 10,
+    backgroundColor: '#0056b3',
+    justifyContent: 'center', alignItems: 'center',
   },
-  avatarTouchable: {
-    margin: 5,
-    padding: 2,
-    borderWidth: 2,
-    borderColor: '#0056b3',
-    borderRadius: 45,
+  modalCancel: {
+    alignItems: 'center', padding: 14,
+    borderRadius: 14, backgroundColor: 'rgba(239,68,68,0.07)',
   },
-  avatarImage: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-  },
-  closeButton: {
-    marginTop: 20,
-    padding: 10,
-  },
+  modalCancelText: { color: '#EF4444', fontSize: 15, fontWeight: '700' },
 });

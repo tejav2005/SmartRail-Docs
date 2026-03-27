@@ -17,12 +17,26 @@ function parseTags(tagsInput) {
   return [...new Set(tags)];
 }
 
+function getDepartmentScope(user) {
+  const department = user?.department?.trim();
+
+  if (!department) {
+    throw new AppError('Authenticated user must have a department', 400);
+  }
+
+  return { department };
+}
+
 /** POST /api/documents/upload */
 const uploadDocument = asyncHandler(async (req, res) => {
   if (!req.file) throw new AppError('A file is required', 400);
+  if (!req.user?.department || !req.user.department.trim()) {
+    throw new AppError('Authenticated user must have a department before uploading documents', 400);
+  }
 
   const title = req.body.title || req.file.originalname;
   const description = req.body.description || '';
+  const department = req.user.department.trim();
 
   const tags = req.body.tags
     ? parseTags(req.body.tags)
@@ -38,6 +52,7 @@ const uploadDocument = asyncHandler(async (req, res) => {
     mimeType: req.file.mimetype,
     size: req.file.size || 0,
     filePath: req.file.path,
+    department,
     uploadedBy: req.user._id,
     accessRoles: req.body.accessRoles
       ? req.body.accessRoles.split(',').map((role) => role.trim()).filter(Boolean)
@@ -67,14 +82,13 @@ const uploadDocument = asyncHandler(async (req, res) => {
 /** GET /api/documents */
 const listDocuments = asyncHandler(async (req, res) => {
   const { category, tag, search, summaryStatus, uploadedBy, page = 1, limit = 20 } = req.query;
-  const query = {};
+  const query = { ...getDepartmentScope(req.user) };
 
   if (category) query.category = category;
   if (tag) query.tags = { $in: parseTags(tag) };
   if (summaryStatus) query.summaryStatus = summaryStatus;
   if (uploadedBy) query.uploadedBy = uploadedBy;
   if (search) query.$text = { $search: search };
-  if (req.user.role !== 'admin') query.accessRoles = req.user.role;
 
   const skip = (Number(page) - 1) * Number(limit);
 
@@ -101,17 +115,17 @@ const listDocuments = asyncHandler(async (req, res) => {
 
 /** GET /api/documents/stats */
 const getStats = asyncHandler(async (req, res) => {
-  const roleFilter = req.user.role === 'admin' ? {} : { accessRoles: req.user.role };
+  const departmentScope = getDepartmentScope(req.user);
   const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
   const [totalDocs, urgentDocs, recentUploads, recentCount] = await Promise.all([
-    Document.countDocuments(roleFilter),
-    Document.countDocuments({ ...roleFilter, tags: 'URGENT' }),
-    Document.find(roleFilter)
+    Document.countDocuments(departmentScope),
+    Document.countDocuments({ ...departmentScope, tags: 'URGENT' }),
+    Document.find(departmentScope)
       .sort({ createdAt: -1 })
       .limit(5)
       .populate('uploadedBy', 'name employeeId'),
-    Document.countDocuments({ ...roleFilter, createdAt: { $gte: oneDayAgo } }),
+    Document.countDocuments({ ...departmentScope, createdAt: { $gte: oneDayAgo } }),
   ]);
 
   res.status(200).json({

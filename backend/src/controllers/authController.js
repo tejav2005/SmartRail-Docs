@@ -9,9 +9,10 @@ const signup = asyncHandler(async (req, res) => {
   const { name, email, employeeId, password, department, role } = req.body;
   const normalizedEmployeeId = employeeId?.trim().toUpperCase();
   const normalizedEmail = email?.trim().toLowerCase();
+  const normalizedDepartment = department?.trim();
 
-  if (!name || !normalizedEmployeeId || !password) {
-    throw new AppError('Name, employee ID, and password are required', 400);
+  if (!name || !normalizedEmployeeId || !password || !normalizedDepartment) {
+    throw new AppError('Name, employee ID, password, and department are required', 400);
   }
 
   const uniquenessChecks = [{ employeeId: normalizedEmployeeId }];
@@ -30,7 +31,7 @@ const signup = asyncHandler(async (req, res) => {
     name: name.trim(),
     email: normalizedEmail,
     employeeId: normalizedEmployeeId,
-    department,
+    department: normalizedDepartment,
     role: role || 'staff',
     password: passwordHash,
   });

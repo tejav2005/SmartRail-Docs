@@ -16,6 +16,15 @@ const documentSchema = new mongoose.Schema(
     mimeType: { type: String, required: true },
     size: { type: Number, default: 0 },
     filePath: { type: String, required: true },
+    department: {
+      type: String,
+      required: [true, 'Department is required'],
+      trim: true,
+      validate: {
+        validator: (value) => typeof value === 'string' && value.trim().length > 0,
+        message: 'Department is required',
+      },
+    },
     summary: { type: String, default: '' },
     summaryStatus: {
       type: String,

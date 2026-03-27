@@ -29,10 +29,14 @@ const authenticate = asyncHandler(async (req, res, next) => {
     throw error;
   }
 
-  const user = await User.findById(decoded.sub);
+  const user = await User.findById(decoded.userId || decoded.sub);
 
   if (!user) {
     throw new AppError('User associated with token no longer exists', 401);
+  }
+
+  if (!user.department && decoded.department) {
+    user.department = decoded.department;
   }
 
   req.user = user;

@@ -16,7 +16,15 @@ const userSchema = new mongoose.Schema(
     employeeId: { type: String, required: true, unique: true, trim: true },
     password: { type: String, required: true, select: false },
     phone: { type: String, trim: true, default: '' },
-    department: { type: String, trim: true, default: '' },
+    department: {
+      type: String,
+      required: [true, 'Department is required'],
+      trim: true,
+      validate: {
+        validator: (value) => typeof value === 'string' && value.trim().length > 0,
+        message: 'Department is required',
+      },
+    },
     avatarUrl: { type: String, default: '' },
     role: { type: String, enum: ['admin', 'staff'], default: 'staff' },
     settings: { type: userSettingsSchema, default: () => ({}) },

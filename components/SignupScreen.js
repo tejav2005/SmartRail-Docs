@@ -14,6 +14,7 @@ import { signup } from '../services/api';
 import { useTheme } from './ThemeContext';
 
 const { height: SH } = Dimensions.get('window');
+const DEPARTMENT_OPTIONS = ['Operations', 'Maintenance', 'Control Room'];
 
 // ─── Input field (shared) ────────────────────────────────────────────────────
 function InputField({ icon, placeholder, value, onChangeText, secureEntry, rightIcon, onRightPress, keyboardType, autoCapitalize, error }) {
@@ -84,6 +85,7 @@ export default function SignupScreen({ navigation }) {
   const { theme } = useTheme();
   const [fullName, setFullName] = useState('');
   const [employeeId, setEmployeeId] = useState('');
+  const [department, setDepartment] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPass, setConfirmPass] = useState('');
   const [showPass, setShowPass] = useState(false);
@@ -95,6 +97,7 @@ export default function SignupScreen({ navigation }) {
     const e = {};
     if (!fullName.trim()) e.fullName = 'Full name is required';
     if (!employeeId.trim()) e.employeeId = 'Employee ID is required';
+    if (!department.trim()) e.department = 'Department is required';
     if (!password) e.password = 'Password is required';
     else if (password.length < 8) e.password = 'Minimum 8 characters required';
     if (password !== confirmPass) e.confirmPass = 'Passwords do not match';
@@ -110,6 +113,7 @@ export default function SignupScreen({ navigation }) {
       await signup({
         name: fullName.trim(),
         employeeId: employeeId.trim().toUpperCase(),
+        department: department.trim(),
         password,
       });
 
@@ -172,6 +176,48 @@ export default function SignupScreen({ navigation }) {
               autoCapitalize="characters"
               error={errors.employeeId}
             />
+            <View style={styles.inputWrap}>
+              <View style={[
+                styles.inputRow,
+                {
+                  backgroundColor: theme.colors.inputBg ?? '#F9FAFB',
+                  borderColor: errors.department ? '#EF4444' : theme.colors.border,
+                },
+              ]}
+              >
+                <Ionicons name="business-outline" size={18} color={theme.colors.muted} style={styles.inputIcon} />
+                <Text style={[styles.departmentPlaceholder, { color: department ? theme.colors.text : theme.colors.muted }]}>
+                  {department || 'Select Department'}
+                </Text>
+              </View>
+              <View style={styles.departmentOptions}>
+                {DEPARTMENT_OPTIONS.map((option) => {
+                  const selected = department === option;
+                  return (
+                    <TouchableOpacity
+                      key={option}
+                      style={[
+                        styles.departmentChip,
+                        {
+                          backgroundColor: selected ? '#0056b3' : (theme.colors.card ?? '#fff'),
+                          borderColor: selected ? '#0056b3' : theme.colors.border,
+                        },
+                      ]}
+                      activeOpacity={0.8}
+                      onPress={() => {
+                        setDepartment(option);
+                        setErrors((e) => ({ ...e, department: '' }));
+                      }}
+                    >
+                      <Text style={[styles.departmentChipText, { color: selected ? '#fff' : theme.colors.text }]}>
+                        {option}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              {errors.department ? <Text style={styles.errorText}>{errors.department}</Text> : null}
+            </View>
             <InputField
               icon="lock-closed-outline"
               placeholder="Password (min. 8 chars)"
@@ -299,6 +345,15 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
   eyeBtn: { padding: 4 },
+  departmentPlaceholder: { flex: 1, fontSize: 15 },
+  departmentOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  departmentChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 12,
+    borderWidth: 1.5,
+  },
+  departmentChipText: { fontSize: 13, fontWeight: '700' },
   errorText: { fontSize: 12, color: '#EF4444', marginLeft: 4 },
 
   // Password hint

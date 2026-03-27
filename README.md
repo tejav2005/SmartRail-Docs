@@ -1,6 +1,6 @@
-# 🚆 RailDocs AI
+# 🚆 SmartRail-Docs
 
-RailDocs AI is an AI-powered document management system designed for railway and metro operations. It helps staff upload, manage, and summarize operational documents efficiently.
+SmartRail-Docs is an AI-powered document management system designed for railway and metro operations. It helps staff upload, manage, and summarize operational documents efficiently.
 
 ---
 
